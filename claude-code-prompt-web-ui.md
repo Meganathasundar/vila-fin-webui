@@ -58,8 +58,26 @@ The **mobile app** (React Native, built separately) is the primary full-featured
 - **Framework:** Go with chi router
 - **Base URL (local):** `http://localhost:8080/api/v1`
 - **Base URL (production):** Read from `VITE_API_BASE_URL` environment variable
-- **Auth:** JWT Bearer token. On login the API returns `access_token` and `refresh_token`. Store `access_token` in memory (not localStorage). Store `refresh_token` in an httpOnly cookie. Implement silent token refresh — intercept 401 responses, call `POST /auth/refresh`, retry the original request.
+- **Auth:** JWT Bearer token. On login the API returns `access_token` and `refresh_token`. Store `access_token` in memory (React Context). Store `refresh_token` in `sessionStorage` (not localStorage, not an httpOnly cookie — the refresh endpoint expects it in the JSON request body, so it must be readable by JS). Implement silent token refresh — intercept 401 responses, read `refresh_token` from `sessionStorage`, call `POST /auth/refresh` with `{ "refresh_token": "..." }`, retry the original request. Clear `sessionStorage` on logout or when refresh fails.
+- **Monetary values:** All monetary API fields (`principal_amount`, `interest_rate`, `emi_amount`, etc.) are **decimal strings** (e.g. `"500000.00"`). Parse with `parseFloat()` before calculations; send back as strings when writing to the API.
 - **OpenAPI spec:** Attached. Generate all API types from the spec using `openapi-typescript`. Do not write API types by hand.
+
+> **Note — endpoints not yet in the attached spec.** The spec will be updated as the backend is built. Until then, write the API call functions and types manually for these endpoints:
+>
+> | Endpoint | Purpose |
+> |----------|---------|
+> | `GET /api/v1/loans/{id}/repayments` | List repayment schedule for a loan |
+> | `PATCH /api/v1/loans/{id}/repayments/{repaymentId}` | Mark installment as paid `{ paid_date, paid_amount }` |
+> | `POST /api/v1/loans/{id}/activate` | Activate a draft loan (manager + admin) |
+> | `POST /api/v1/loans/{id}/close` | Close an active loan (manager + admin) |
+> | `POST /api/v1/loans/{id}/default` | Mark loan as defaulted (manager + admin) |
+> | `POST /api/v1/loans/{id}/cancel` | Cancel a draft loan (all roles) |
+> | `GET /api/v1/customers/{id}/kyc` | List KYC documents for a customer |
+> | `POST /api/v1/customers/{id}/kyc` | Upload KYC document (multipart/form-data: `file`, `doc_type`) |
+> | `GET /api/v1/vehicles/{id}/transfers` | List ownership transfers for a vehicle |
+> | `POST /api/v1/vehicles/{id}/transfers` | Record an ownership transfer |
+> | `GET /api/v1/service-expenses` | List service expenses (supports `?vehicle_id`, `?service_type`, `?date_from`, `?date_to`) |
+> | `POST /api/v1/service-expenses` | Create a service expense (multipart/form-data for optional bill upload) |
 
 ---
 
@@ -68,9 +86,9 @@ The **mobile app** (React Native, built separately) is the primary full-featured
 The backend owns auth entirely (no Supabase, no third-party auth SDK).
 
 **Login page** (`/login`)
-- Email + password form
-- On success: store `access_token` in React Context + memory, set `refresh_token` cookie, redirect to dashboard
-- On failure: show inline error "Invalid email or password"
+- Phone + password form
+- On success: store `access_token` in React Context, store `refresh_token` in `sessionStorage`, redirect to dashboard
+- On failure: show inline error "Invalid phone or password"
 - No signup page — accounts are created by admins in the backend directly
 - No "forgot password" flow in the MVP
 
@@ -79,7 +97,7 @@ The backend owns auth entirely (no Supabase, no third-party auth SDK).
 - If no token exists on app load, redirect to `/login`
 - Role is decoded from the JWT payload (`role` field: `admin`, `manager`, `agent`)
 
-**Auth context** should expose: `user` (id, email, role), `login()`, `logout()`, `accessToken`
+**Auth context** should expose: `user` (id, phone, email: string | null, role), `login()`, `logout()`, `accessToken`
 
 ---
 
@@ -162,14 +180,14 @@ src/
 
 A summary view for the logged-in staff member. Show four stat cards at the top:
 
-- **Total active loans** — count of loans with `status = active`
-- **Total loan book value** — sum of `principal_amount` for active loans, formatted in INR lakh format
-- **Overdue installments** — count of `repayment_schedules` where `status = overdue`
-- **Vehicles available** — count of vehicles where `current_status = available`
+- **Total active loans** — from `GET /api/v1/loans?status=active&limit=1`: read `meta.total`
+- **Total loan book value** — not directly available from the API; fetch `GET /api/v1/loans?status=active&limit=200` and sum `principal_amount` (parse each as `parseFloat`). Format in INR lakh format.
+- **Overdue installments** — from `GET /api/v1/loans/repayments?status=overdue&limit=1`: read `meta.total`
+- **Vehicles available** — from `GET /api/v1/vehicles?current_status=available&limit=1`: read `meta.total`
 
 Below the stat cards show two tables side by side:
-- **Recent loans** — last 10 loans created, columns: Loan No, Customer, Vehicle, Principal, Status, Created date
-- **Overdue installments** — top 10 by oldest due date, columns: Loan No, Customer, Installment No, Due date, Amount
+- **Recent loans** — `GET /api/v1/loans?limit=10&offset=0` sorted by `created_at` desc. Columns: Loan No, Customer, Vehicle, Principal, Status, Created date.
+- **Overdue installments** — `GET /api/v1/loans/repayments?status=overdue&limit=10` sorted by `due_date` asc. Columns: Loan No, Customer, Installment No, Due date, Amount.
 
 No charts needed in MVP.
 
@@ -178,10 +196,10 @@ No charts needed in MVP.
 #### Customers (`/customers`)
 
 **List page**
-- Search by phone number (debounced 300ms)
-- Filter by `kyc_status` (All / Pending / Uploaded / Verified / Rejected) using a select dropdown
+- Search by phone number (debounced 300ms) — sends `?phone=<value>` query param
+- Filter by `kyc_status` (All / Pending / Uploaded / Verified / Rejected) — sends `?kyc_status=<value>` query param
 - Table columns: Full name, Phone, ID type, ID number, KYC status (badge), Created date, Actions (View)
-- Pagination: 20 rows per page
+- Pagination: 20 rows per page (`limit=20&offset=<page*20>`)
 - "Add Customer" button (admin + manager + agent)
 
 **Detail page** (`/customers/:id`)
@@ -204,11 +222,11 @@ Business rules enforced in the form:
 #### Vehicles (`/vehicles`)
 
 **List page**
-- Search by registration number
-- Filter by `current_status` (All / Available / Loan active / Sold)
-- Filter by `vehicle_source` (All / Lender stock / External collateral)
+- Search by registration number (debounced 300ms) — sends `?registration_no=<value>` query param
+- Filter by `current_status` (All / Available / Loan active / Sold) — sends `?current_status=<value>` query param
+- Filter by `vehicle_source` (All / Lender stock / External collateral) — sends `?vehicle_source=<value>` query param
 - Table columns: Reg no, Make, Model, Year, Fuel type, Source (badge), Status (badge), Actions (View)
-- Pagination: 20 rows per page
+- Pagination: 20 rows per page (`limit=20&offset=<page*20>`)
 - "Add Vehicle" button
 
 **Detail page** (`/vehicles/:id`)
@@ -220,7 +238,7 @@ Business rules enforced in the form:
 - **Active loan section**: if a loan is active against this vehicle, show a summary card linking to the loan
 
 **Form** (create + edit)
-Fields: Registration no, Make, Model, Year (number), Color, Fuel type (select), Vehicle type (select: two_wheeler, four_wheeler, commercial), Chassis no, Engine no, Vehicle source (select — shown only on create, cannot change after creation)
+Fields: Registration no, Make, Model, Year (number), Color, Fuel type (select: petrol, diesel, electric, hybrid, cng, other), Vehicle type (select: two_wheeler, four_wheeler, commercial), Chassis no, Engine no, Vehicle source (select: lender_stock, external_collateral — shown only on create, cannot change after creation), Current owner (customer search autocomplete, optional — only shown for lender_stock vehicles)
 
 Business rule enforced in the form:
 - Registration no, Chassis no, Engine no: unique — if API returns 409, show "already registered" error on the specific field
@@ -234,11 +252,11 @@ Fields: Transfer type (purchase/sale), From customer (customer search autocomple
 #### Loans (`/loans`)
 
 **List page**
-- Filter by `status` (All / Draft / Active / Closed / Defaulted / Cancelled)
-- Filter by `loan_type` (All / Vehicle sale / External purchase)
-- Search by loan number
+- Filter by `status` (All / Draft / Active / Closed / Defaulted / Cancelled) — sends `?status=<value>` query param
+- Filter by `loan_type` (All / Vehicle sale / External purchase) — sends `?loan_type=<value>` query param
+- Search by loan number (debounced 300ms) — sends `?loan_number=<value>` query param
 - Table columns: Loan No, Customer, Vehicle (reg no), Loan type (badge), Principal, EMI, Status (badge), Disbursement date, Actions (View)
-- Pagination: 20 rows per page
+- Pagination: 20 rows per page (`limit=20&offset=<page*20>`)
 - "Create Loan" button
 
 **Detail page** (`/loans/:id`)
@@ -287,11 +305,11 @@ This same formula must be in `src/utils/emi.ts` and used in both the live previe
 #### Service Expenses (`/service-expenses`)
 
 **List page**
-- Filter by `vehicle_id` (vehicle registration search autocomplete)
-- Filter by `service_type` (All / Maintenance / Repair / Insurance / Tax / Fitness certificate / Pollution check / Other)
-- Filter by date range (from date, to date)
+- Filter by `vehicle_id` (vehicle registration search autocomplete) — sends `?vehicle_id=<uuid>` query param
+- Filter by `service_type` (All / Maintenance / Repair / Insurance / Tax / Fitness certificate / Pollution check / Other) — sends `?service_type=<value>` query param
+- Filter by date range — sends `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` query params
 - Table columns: Vehicle (reg no), Service type (badge), Description, Cost (INR), Garage, Date, Recorded by, Actions (View bill)
-- Pagination: 20 rows per page
+- Pagination: 20 rows per page (`limit=20&offset=<page*20>`)
 - "Log Expense" button
 
 **Form** (create — no edit in MVP)

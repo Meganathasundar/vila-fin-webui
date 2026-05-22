@@ -1,0 +1,731 @@
+openapi: 3.0.3
+info:
+  title: Vila Fin — Vehicle Loan API
+  description: Go backend for vehicle loan SaaS. Auth uses JWT Bearer tokens.
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: Health
+  - name: Auth
+  - name: Customers
+  - name: Vehicles
+  - name: Loans
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+
+    TokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          format: int64
+        token_type:
+          type: string
+          example: Bearer
+
+    Profile:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        full_name:
+          type: string
+        phone:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
+        role:
+          type: string
+          enum: [admin, manager, agent]
+        is_active:
+          type: boolean
+
+    SignupRequest:
+      type: object
+      required: [phone, password, full_name]
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+          minLength: 8
+        full_name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, manager, agent]
+          default: agent
+
+    SignupResponse:
+      type: object
+      properties:
+        tokens:
+          $ref: '#/components/schemas/TokenResponse'
+        profile:
+          $ref: '#/components/schemas/Profile'
+
+    LoginRequest:
+      type: object
+      required: [phone, password]
+      properties:
+        phone:
+          type: string
+        password:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    CustomerCreate:
+      type: object
+      required: [full_name, phone, id_type, id_number]
+      properties:
+        full_name:
+          type: string
+        phone:
+          type: string
+        alt_phone:
+          type: string
+        address:
+          type: string
+        city:
+          type: string
+        state:
+          type: string
+        pincode:
+          type: string
+        id_type:
+          type: string
+          enum: [aadhaar, pan, passport, driving_licence, voter_id]
+        id_number:
+          type: string
+
+    CustomerUpdate:
+      allOf:
+        - $ref: '#/components/schemas/CustomerCreate'
+        - type: object
+          required: [kyc_status]
+          properties:
+            kyc_status:
+              type: string
+              enum: [pending, uploaded, verified, rejected]
+
+    Customer:
+      allOf:
+        - $ref: '#/components/schemas/CustomerUpdate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_by:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    CustomerList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+
+    VehicleCreate:
+      type: object
+      required: [registration_no, make, model, year, chassis_no, engine_no]
+      properties:
+        registration_no:
+          type: string
+        make:
+          type: string
+        model:
+          type: string
+        year:
+          type: integer
+        color:
+          type: string
+        fuel_type:
+          type: string
+          enum: [petrol, diesel, electric, hybrid, cng, other]
+        vehicle_type:
+          type: string
+        chassis_no:
+          type: string
+        engine_no:
+          type: string
+        vehicle_source:
+          type: string
+          enum: [lender_stock, external_collateral]
+          default: lender_stock
+        current_owner_id:
+          type: string
+          format: uuid
+          nullable: true
+
+    VehicleUpdate:
+      allOf:
+        - $ref: '#/components/schemas/VehicleCreate'
+        - type: object
+          required: [current_status]
+          properties:
+            current_status:
+              type: string
+              enum: [available, loan_active, sold]
+
+    Vehicle:
+      allOf:
+        - $ref: '#/components/schemas/VehicleUpdate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            created_by:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    VehicleList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vehicle'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+
+    LoanCreate:
+      type: object
+      required: [customer_id, vehicle_id, principal_amount, interest_rate, tenure_months, emi_amount]
+      properties:
+        customer_id:
+          type: string
+          format: uuid
+        vehicle_id:
+          type: string
+          format: uuid
+        loan_type:
+          type: string
+          enum: [vehicle_sale, external_purchase]
+          default: vehicle_sale
+        principal_amount:
+          type: string
+          example: "500000.00"
+        interest_rate:
+          type: string
+          example: "12.5000"
+        tenure_months:
+          type: integer
+        emi_amount:
+          type: string
+          example: "15000.00"
+        notes:
+          type: string
+
+    LoanUpdate:
+      type: object
+      required: [loan_type, principal_amount, interest_rate, tenure_months, emi_amount, status]
+      properties:
+        loan_type:
+          type: string
+          enum: [vehicle_sale, external_purchase]
+        principal_amount:
+          type: string
+        interest_rate:
+          type: string
+        tenure_months:
+          type: integer
+        emi_amount:
+          type: string
+        disbursement_date:
+          type: string
+          format: date
+        maturity_date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [draft, active, closed, defaulted, cancelled]
+        notes:
+          type: string
+
+    Loan:
+      allOf:
+        - $ref: '#/components/schemas/LoanUpdate'
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            loan_number:
+              type: string
+            customer_id:
+              type: string
+              format: uuid
+            vehicle_id:
+              type: string
+              format: uuid
+            created_by:
+              type: string
+              format: uuid
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+
+    LoanList:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Loan'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+
+    ListMeta:
+      type: object
+      properties:
+        limit:
+          type: integer
+        offset:
+          type: integer
+        total:
+          type: integer
+
+paths:
+  /health/live:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /health/ready:
+    get:
+      tags: [Health]
+      summary: Readiness probe (includes DB ping)
+      responses:
+        '200':
+          description: Ready
+        '503':
+          description: Database unavailable
+
+  /api/v1/auth/signup:
+    post:
+      tags: [Auth]
+      summary: Register staff user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignupResponse'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Phone or email already exists
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid credentials
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '401':
+          description: Invalid refresh token
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout (invalidate refresh token)
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: No content
+        '401':
+          description: Unauthorized
+
+  /api/v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user profile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Profile'
+        '401':
+          description: Unauthorized
+
+  /api/v1/customers:
+    get:
+      tags: [Customers]
+      summary: List customers
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerList'
+    post:
+      tags: [Customers]
+      summary: Create customer
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /api/v1/customers/{id}:
+    get:
+      tags: [Customers]
+      summary: Get customer by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Not found
+    put:
+      tags: [Customers]
+      summary: Update customer
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+
+  /api/v1/vehicles:
+    get:
+      tags: [Vehicles]
+      summary: List vehicles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VehicleList'
+    post:
+      tags: [Vehicles]
+      summary: Create vehicle
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+
+  /api/v1/vehicles/{id}:
+    get:
+      tags: [Vehicles]
+      summary: Get vehicle by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+    put:
+      tags: [Vehicles]
+      summary: Update vehicle
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VehicleUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vehicle'
+
+  /api/v1/loans:
+    get:
+      tags: [Loans]
+      summary: List loans
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: offset
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoanList'
+    post:
+      tags: [Loans]
+      summary: Create loan (draft)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+
+  /api/v1/loans/{id}:
+    get:
+      tags: [Loans]
+      summary: Get loan by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
+    put:
+      tags: [Loans]
+      summary: Update loan
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoanUpdate'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Loan'
