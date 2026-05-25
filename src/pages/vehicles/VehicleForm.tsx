@@ -30,6 +30,16 @@ const schema = z.object({
   purchase_date: z.string().optional(),
   // x-field-type: lookup, x-lookup-list: vehicle_consultancy
   consultancy: z.string().nullable().optional(),
+  // x-field-type: currency
+  sale_price: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+    z.number().positive("Must be a positive amount").optional()
+  ),
+  // x-field-type: currency
+  final_price: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+    z.number().positive("Must be a positive amount").optional()
+  ),
   vehicle_source: z.enum(["lender_stock", "external_collateral"]).optional(),
 });
 
@@ -61,6 +71,8 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
           engine_no: vehicle.engine_no ?? undefined,
           purchase_date: vehicle.purchase_date ?? undefined,
           consultancy: vehicle.consultancy ?? null,
+          sale_price: vehicle.sale_price ? Number(vehicle.sale_price) : undefined,
+          final_price: vehicle.final_price ? Number(vehicle.final_price) : undefined,
           vehicle_source: vehicle.vehicle_source,
         }
       : {
@@ -78,6 +90,12 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
           : undefined,
         purchase_date: data.purchase_date || undefined,
         consultancy: data.consultancy || null,
+        sale_price: data.sale_price
+          ? String(Number(data.sale_price).toFixed(2))
+          : undefined,
+        final_price: data.final_price
+          ? String(Number(data.final_price).toFixed(2))
+          : undefined,
       };
 
       if (isEdit && vehicle.id) {
@@ -192,6 +210,22 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
             Sourcing consultancy. Manage in{" "}
             <a href="/lookups" className="text-primary hover:underline">Lookups →</a>
           </p>
+        </div>
+
+        {/* Sale Price — x-field-type: currency */}
+        <div className="space-y-1">
+          <Label>Sale Price (₹)</Label>
+          <Input {...register("sale_price")} type="number" step="0.01" placeholder="e.g. 350000.00" />
+          {errors.sale_price && <p className="text-xs text-destructive">{errors.sale_price.message}</p>}
+          <p className="text-xs text-muted-foreground">Amount paid to acquire the vehicle</p>
+        </div>
+
+        {/* Final Price — x-field-type: currency */}
+        <div className="space-y-1">
+          <Label>Final Price (₹)</Label>
+          <Input {...register("final_price")} type="number" step="0.01" placeholder="e.g. 350000.00" />
+          {errors.final_price && <p className="text-xs text-destructive">{errors.final_price.message}</p>}
+          <p className="text-xs text-muted-foreground">Final price of the vehicle</p>
         </div>
 
         <div className="space-y-1">

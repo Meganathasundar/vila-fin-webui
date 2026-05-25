@@ -105,6 +105,12 @@ export default function VehicleDetail() {
                   <dd className="font-medium capitalize">{value}</dd>
                 </div>
               ))}
+              {vehicle.final_price && (
+                <div>
+                  <dt className="text-muted-foreground">Final Price</dt>
+                  <dd className="font-medium"><CurrencyDisplay value={vehicle.final_price} /></dd>
+                </div>
+              )}
               {vehicle.purchase_date && (
                 <div>
                   <dt className="text-muted-foreground">Purchase Date</dt>

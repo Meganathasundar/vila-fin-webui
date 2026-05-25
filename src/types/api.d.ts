@@ -93,6 +93,10 @@ export interface VehicleCreate {
   purchase_date?: string | null;
   /** Lookup code from vehicle_consultancy list */
   consultancy?: string | null;
+  /** Amount paid to acquire the vehicle */
+  sale_price?: string | null;
+  /** Final price of the vehicle */
+  final_price?: string | null;
   vehicle_source?: "lender_stock" | "external_collateral";
   current_owner_id?: string | null;
 }
@@ -107,6 +111,8 @@ export interface Vehicle extends VehicleUpdate {
   created_at?: string;
   updated_at?: string;
   purchase_date?: string | null;
+  sale_price?: string | null;
+  final_price?: string | null;
 }
 
 export interface VehicleList {
