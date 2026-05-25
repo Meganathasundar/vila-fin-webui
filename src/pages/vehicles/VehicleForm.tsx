@@ -69,7 +69,7 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
           vehicle_type: vehicle.vehicle_type ?? undefined,
           chassis_no: vehicle.chassis_no ?? undefined,
           engine_no: vehicle.engine_no ?? undefined,
-          purchase_date: vehicle.purchase_date ?? undefined,
+          purchase_date: vehicle.purchase_date ?? "",
           consultancy: vehicle.consultancy ?? null,
           sale_price: vehicle.sale_price ? Number(vehicle.sale_price) : undefined,
           final_price: vehicle.final_price ? Number(vehicle.final_price) : undefined,
@@ -238,20 +238,18 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
           <Input {...register("engine_no")} />
           {errors.engine_no && <p className="text-xs text-destructive">{errors.engine_no.message}</p>}
         </div>
+        <div className="space-y-1">
+          <Label>Purchase Date</Label>
+          <Input type="date" {...register("purchase_date")} />
+          <p className="text-xs text-muted-foreground">Date vehicle was acquired</p>
+        </div>
         {!isEdit && (
-          <>
-            <div className="space-y-1">
-              <Label>Vehicle Cost (₹)</Label>
-              <Input {...register("vehicle_cost")} type="number" step="0.01" placeholder="e.g. 350000" />
-              {errors.vehicle_cost && <p className="text-xs text-destructive">{errors.vehicle_cost.message}</p>}
-              <p className="text-xs text-muted-foreground">Auto-logged as purchasing cost</p>
-            </div>
-            <div className="space-y-1">
-              <Label>Purchase Date</Label>
-              <Input type="date" {...register("purchase_date")} />
-              <p className="text-xs text-muted-foreground">Date vehicle was acquired</p>
-            </div>
-          </>
+          <div className="space-y-1">
+            <Label>Vehicle Cost (₹)</Label>
+            <Input {...register("vehicle_cost")} type="number" step="0.01" placeholder="e.g. 350000" />
+            {errors.vehicle_cost && <p className="text-xs text-destructive">{errors.vehicle_cost.message}</p>}
+            <p className="text-xs text-muted-foreground">Auto-logged as purchasing cost</p>
+          </div>
         )}
       </div>
       <div className="flex gap-2 pt-2">

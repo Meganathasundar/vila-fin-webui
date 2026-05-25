@@ -89,42 +89,74 @@ export default function VehicleDetail() {
           <CardHeader><CardTitle>Vehicle Info</CardTitle></CardHeader>
           <CardContent>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-              {[
+              {/* Static text fields */}
+              {([
                 ["Registration No", vehicle.registration_no],
                 ["Make", vehicle.make],
                 ["Model", vehicle.model],
                 ["Year", String(vehicle.year)],
                 ["Color", vehicle.color ?? "—"],
                 ["Fuel Type", vehicle.fuel_type ?? "—"],
-                ["Vehicle Type", vehicle.vehicle_type ?? "—"],
+                ["Vehicle Type", vehicle.vehicle_type ? vehicle.vehicle_type.replace(/_/g, " ") : "—"],
                 ["Chassis No", vehicle.chassis_no ?? "—"],
                 ["Engine No", vehicle.engine_no ?? "—"],
-              ].map(([label, value]) => (
+              ] as [string, string][]).map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-muted-foreground">{label}</dt>
                   <dd className="font-medium capitalize">{value}</dd>
                 </div>
               ))}
-              {vehicle.final_price && (
-                <div>
-                  <dt className="text-muted-foreground">Final Price</dt>
-                  <dd className="font-medium"><CurrencyDisplay value={vehicle.final_price} /></dd>
-                </div>
-              )}
-              {vehicle.purchase_date && (
-                <div>
-                  <dt className="text-muted-foreground">Purchase Date</dt>
-                  <dd className="font-medium"><DateDisplay value={vehicle.purchase_date} /></dd>
-                </div>
-              )}
+
+              {/* Source */}
               <div>
-                <dt className="text-muted-foreground">Vehicle Cost</dt>
+                <dt className="text-muted-foreground">Vehicle Source</dt>
+                <dd><StatusBadge status={vehicle.vehicle_source ?? "lender_stock"} /></dd>
+              </div>
+
+              {/* Consultancy */}
+              <div>
+                <dt className="text-muted-foreground">Consultancy</dt>
+                <dd className="font-medium">
+                  {vehicle.consultancy
+                    ? <LookupDisplay listCode="vehicle_consultancy" id={vehicle.consultancy} />
+                    : <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
+
+              {/* Purchase Date */}
+              <div>
+                <dt className="text-muted-foreground">Purchase Date</dt>
+                <dd className="font-medium">
+                  {vehicle.purchase_date ? <DateDisplay value={vehicle.purchase_date} /> : <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
+
+              {/* Sale Price */}
+              <div>
+                <dt className="text-muted-foreground">Sale Price</dt>
+                <dd className="font-medium">
+                  {vehicle.sale_price ? <CurrencyDisplay value={vehicle.sale_price} /> : <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
+
+              {/* Final Price */}
+              <div>
+                <dt className="text-muted-foreground">Final Price</dt>
+                <dd className="font-medium">
+                  {vehicle.final_price ? <CurrencyDisplay value={vehicle.final_price} /> : <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
+
+              {/* Total costs incurred */}
+              <div>
+                <dt className="text-muted-foreground">Total Cost Incurred</dt>
                 <dd className="font-semibold text-base">
                   {totalCost > 0
                     ? <CurrencyDisplay value={totalCost.toFixed(2)} />
                     : <span className="text-muted-foreground font-normal">—</span>}
                 </dd>
               </div>
+
               <div>
                 <dt className="text-muted-foreground">Record Created</dt>
                 <dd><DateDisplay value={vehicle.created_at} /></dd>

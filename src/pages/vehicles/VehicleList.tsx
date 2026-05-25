@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DateDisplay } from "@/components/shared/DateDisplay";
+import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
+import { LookupDisplay } from "@/components/shared/LookupDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useDebounce } from "@/hooks/useDebounce";
 import type { Vehicle } from "@/types/api";
@@ -31,12 +33,17 @@ const COL_OPTIONS: ColOption[] = [
   { id: "color", label: "Color" },
   { id: "fuel_type", label: "Fuel Type" },
   { id: "vehicle_type", label: "Vehicle Type" },
+  { id: "chassis_no", label: "Chassis No" },
+  { id: "engine_no", label: "Engine No" },
   { id: "vehicle_source", label: "Source" },
   { id: "current_status", label: "Status", always: true },
+  { id: "consultancy", label: "Consultancy" },
   { id: "purchase_date", label: "Purchase Date" },
+  { id: "sale_price", label: "Sale Price" },
+  { id: "final_price", label: "Final Price" },
 ];
 
-const DEFAULT_VISIBLE = new Set(["registration_no", "make", "model", "year", "fuel_type", "vehicle_source", "current_status"]);
+const DEFAULT_VISIBLE = new Set(["registration_no", "make", "model", "year", "current_status", "consultancy", "sale_price", "purchase_date"]);
 
 export default function VehicleList() {
   const navigate = useNavigate();
@@ -124,11 +131,49 @@ export default function VehicleList() {
       cell: ({ getValue }) => <StatusBadge status={String(getValue())} />,
     },
     {
+      id: "chassis_no",
+      header: "Chassis No",
+      accessorKey: "chassis_no",
+      cell: ({ getValue }) => (
+        <span className="font-mono text-xs">{(getValue() as string) ?? "—"}</span>
+      ),
+    },
+    {
+      id: "engine_no",
+      header: "Engine No",
+      accessorKey: "engine_no",
+      cell: ({ getValue }) => (
+        <span className="font-mono text-xs">{(getValue() as string) ?? "—"}</span>
+      ),
+    },
+    {
+      id: "consultancy",
+      header: "Consultancy",
+      accessorKey: "consultancy",
+      cell: ({ getValue }) => (
+        <LookupDisplay listCode="vehicle_consultancy" id={getValue() as string | null} />
+      ),
+    },
+    {
       id: "purchase_date",
       header: "Purchase Date",
       accessorKey: "purchase_date",
       cell: ({ getValue }) =>
         getValue() ? <DateDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      id: "sale_price",
+      header: "Sale Price",
+      accessorKey: "sale_price",
+      cell: ({ getValue }) =>
+        getValue() ? <CurrencyDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
+    },
+    {
+      id: "final_price",
+      header: "Final Price",
+      accessorKey: "final_price",
+      cell: ({ getValue }) =>
+        getValue() ? <CurrencyDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
     },
   ];
 
