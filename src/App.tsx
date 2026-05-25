@@ -21,8 +21,9 @@ import LoanList from "@/pages/loans/LoanList";
 import LoanDetail from "@/pages/loans/LoanDetail";
 import LoanForm from "@/pages/loans/LoanForm";
 
-import ServiceExpenseList from "@/pages/serviceExpenses/ServiceExpenseList";
-import ServiceExpenseForm from "@/pages/serviceExpenses/ServiceExpenseForm";
+import CostIncurredList from "@/pages/costsIncurred/CostIncurredList";
+import CostIncurredForm from "@/pages/costsIncurred/CostIncurredForm";
+import LookupManager from "@/pages/lookups/LookupManager";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -73,10 +74,14 @@ export default function App() {
                 <Route path=":id" element={<LoanDetail />} handle={{ breadcrumb: "Detail" }} />
               </Route>
 
-              {/* Service Expenses */}
-              <Route path="/service-expenses" handle={{ breadcrumb: "Service Expenses" }}>
-                <Route index element={<ServiceExpenseList />} />
-                <Route path="new" element={<ServiceExpenseForm />} handle={{ breadcrumb: "New" }} />
+              {/* Lookups */}
+              <Route path="/lookups" element={<LookupManager />} handle={{ breadcrumb: "Lookups" }} />
+
+              {/* Costs Incurred */}
+              <Route path="/costs-incurred" handle={{ breadcrumb: "Costs Incurred" }}>
+                <Route index element={<CostIncurredList />} />
+                <Route path="new" element={<CostIncurredForm />} handle={{ breadcrumb: "New" }} />
+                <Route path=":id/edit" element={<CostIncurredForm />} handle={{ breadcrumb: "Edit" }} />
               </Route>
             </Route>
 

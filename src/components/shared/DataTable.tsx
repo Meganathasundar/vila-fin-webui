@@ -16,6 +16,7 @@ interface DataTableProps<TData> {
   onPaginationChange?: (pagination: PaginationState) => void;
   isLoading?: boolean;
   pageSize?: number;
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData>({
@@ -26,6 +27,7 @@ export function DataTable<TData>({
   onPaginationChange,
   isLoading = false,
   pageSize = 20,
+  onRowClick,
 }: DataTableProps<TData>) {
   const table = useReactTable({
     data,
@@ -84,7 +86,11 @@ export function DataTable<TData>({
               </tr>
             ) : (
               table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors">
+                <tr
+                  key={row.id}
+                  className={`border-b hover:bg-muted/30 transition-colors ${onRowClick ? "cursor-pointer" : ""}`}
+                  onClick={() => onRowClick?.(row.original)}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <td key={cell.id} className="px-4 py-3">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}

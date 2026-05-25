@@ -46,7 +46,9 @@ const ROLE_PERMISSIONS: Record<string, Action[]> = {
   ],
   agent: [
     "create_customer",
+    "edit_customer",
     "create_vehicle",
+    "edit_vehicle",
     "create_loan",
     "cancel_loan",
     "log_expense",

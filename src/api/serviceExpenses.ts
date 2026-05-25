@@ -1,35 +1,22 @@
 import { apiClient } from "./client";
+import type { ServiceExpense, ServiceExpenseCreate, ServiceExpenseList } from "@/types/api";
 
-export interface ServiceExpense {
-  id?: string;
+interface ListParams {
   vehicle_id?: string;
   service_type?: string;
-  description?: string;
-  cost?: string;
-  service_date?: string;
-  garage_name?: string;
-  odometer_reading?: number;
-  created_by?: string;
-  created_at?: string;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  offset?: number;
 }
 
-export interface ServiceExpenseCreate {
-  vehicle_id: string;
-  service_type: string;
-  description?: string;
-  cost: string;
-  service_date: string;
-  garage_name?: string;
-  odometer_reading?: number;
-}
-
-interface ServiceExpenseList {
-  data?: ServiceExpense[];
-  meta?: { limit?: number; offset?: number; total?: number };
-}
-
-export async function listServiceExpenses(params: Record<string, string | number | undefined> = {}): Promise<ServiceExpenseList> {
+export async function listServiceExpenses(params: ListParams = {}): Promise<ServiceExpenseList> {
   const res = await apiClient.get<ServiceExpenseList>("/service-expenses", { params });
+  return res.data;
+}
+
+export async function getServiceExpense(id: string): Promise<ServiceExpense> {
+  const res = await apiClient.get<ServiceExpense>(`/service-expenses/${id}`);
   return res.data;
 }
 

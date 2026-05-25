@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
-import { login as apiLogin, logout as apiLogout, getMe } from "@/api/auth";
-import { setAccessToken, getAccessToken } from "@/api/client";
+import { login as apiLogin, logout as apiLogout, refreshToken, getMe } from "@/api/auth";
+import { setAccessToken, getAccessToken, setRefreshToken, getRefreshToken } from "@/api/client";
 import type { Profile } from "@/types/api";
 
 interface AuthUser {
@@ -36,12 +36,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Attempt silent restore via refresh token cookie
     const token = getAccessToken();
+    const rt = getRefreshToken();
+
     if (token) {
+      // In-memory token present — fetch profile directly
       getMe()
         .then((profile) => setUser(profileToUser(profile)))
         .catch(() => setAccessToken(null))
+        .finally(() => setIsLoading(false));
+    } else if (rt) {
+      // No in-memory token but stored refresh token exists — try silent refresh
+      refreshToken(rt)
+        .then((tokens) => {
+          setAccessToken(tokens.access_token!);
+          if (tokens.refresh_token) setRefreshToken(tokens.refresh_token);
+          return getMe();
+        })
+        .then((profile) => setUser(profileToUser(profile)))
+        .catch(() => {
+          setAccessToken(null);
+          setRefreshToken(null);
+        })
         .finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
@@ -52,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const tokens = await apiLogin({ phone, password });
     if (!tokens.access_token) throw new Error("No token");
     setAccessToken(tokens.access_token);
+    if (tokens.refresh_token) setRefreshToken(tokens.refresh_token);
     const profile = await getMe();
     setUser(profileToUser(profile));
   }, []);
@@ -63,6 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // ignore
     }
     setAccessToken(null);
+    setRefreshToken(null);
     setUser(null);
   }, []);
 

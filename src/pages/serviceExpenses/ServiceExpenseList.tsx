@@ -11,7 +11,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { DateDisplay } from "@/components/shared/DateDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
-import type { ServiceExpense } from "@/api/serviceExpenses";
+import type { ServiceExpense } from "@/types/api";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
 
 const SERVICE_TYPES = ["maintenance", "repair", "insurance", "tax", "fitness_certificate", "pollution_check", "other"];

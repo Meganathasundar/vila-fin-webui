@@ -5,6 +5,7 @@ import {
   Car,
   FileText,
   Wrench,
+  List,
   LogOut,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
@@ -17,7 +18,8 @@ const NAV_ITEMS = [
   { to: "/customers", label: "Customers", icon: Users },
   { to: "/vehicles", label: "Vehicles", icon: Car },
   { to: "/loans", label: "Loans", icon: FileText },
-  { to: "/service-expenses", label: "Service Expenses", icon: Wrench },
+  { to: "/costs-incurred", label: "Costs Incurred", icon: Wrench },
+  { to: "/lookups", label: "Lookups", icon: List },
 ];
 
 export function Sidebar() {

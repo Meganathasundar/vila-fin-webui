@@ -1,6 +1,6 @@
-// Generated from api-spec.yml
+// Generated from api-spec.yml v1.7.0
 
-export interface Error {
+export interface ApiError {
   error?: {
     code?: string;
     message?: string;
@@ -84,11 +84,15 @@ export interface VehicleCreate {
   make: string;
   model: string;
   year: number;
-  color?: string;
-  fuel_type?: "petrol" | "diesel" | "electric" | "hybrid" | "cng" | "other";
-  vehicle_type?: string;
-  chassis_no: string;
-  engine_no: string;
+  color?: string | null;
+  fuel_type?: "petrol" | "diesel" | "electric" | "hybrid" | "cng" | "other" | null;
+  vehicle_type?: "two_wheeler" | "four_wheeler" | "commercial" | null;
+  chassis_no?: string | null;
+  engine_no?: string | null;
+  vehicle_cost?: string | null;
+  purchase_date?: string | null;
+  /** Lookup code from vehicle_consultancy list */
+  consultancy?: string | null;
   vehicle_source?: "lender_stock" | "external_collateral";
   current_owner_id?: string | null;
 }
@@ -102,6 +106,7 @@ export interface Vehicle extends VehicleUpdate {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
+  purchase_date?: string | null;
 }
 
 export interface VehicleList {
@@ -146,3 +151,156 @@ export interface LoanList {
   data?: Loan[];
   meta?: ListMeta;
 }
+
+// ── Lookups ──────────────────────────────────────────────────────────────────
+
+// ── Lookup version meta (injected by middleware into every non-lookup response) ──
+
+export interface LookupVersionMeta {
+  lookup_version?: number;
+  lookup_stale?: boolean;
+}
+
+// ── Summary shape returned by GET /api/v1/lookups (bulk) ─────────────────────
+// The per-list endpoint (GET /lookups/{code}) returns ListValuesResponse whose
+// data array may also include id and is_active from the server even though the
+// spec's LookupValueSummary schema omits them — they are kept optional here so
+// the admin UI can use them when present without breaking if absent.
+
+export interface LookupValueSummary {
+  id?: string;
+  code: string;
+  label: string;
+  meta?: Record<string, unknown> | null;
+  sort_order?: number;
+  /** Present in per-list response (GET /lookups/{code}); absent in bulk response */
+  is_active?: boolean;
+}
+
+// ── Grouped response from GET /api/v1/lookups ─────────────────────────────────
+
+export interface AllLookupsResponse {
+  data?: {
+    lookups?: Record<string, LookupValueSummary[]>;
+  };
+  meta?: {
+    lookup_version?: number;
+  };
+}
+
+// ── Per-list response from GET /api/v1/lookups/{code} ────────────────────────
+
+export interface ListValuesResponse {
+  data?: LookupValueSummary[];
+  meta?: {
+    lookup_version?: number;
+    list?: string;
+  };
+}
+
+export interface LookupListCreate {
+  code: string;
+  name: string;
+  description?: string | null;
+}
+
+export interface LookupListUpdate {
+  name: string;
+  description?: string | null;
+  is_active: boolean;
+}
+
+export interface LookupList extends LookupListUpdate {
+  id?: string;
+  code?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface LookupListDetail extends LookupList {
+  values?: LookupValue[];
+}
+
+export interface LookupListsResponse {
+  data?: LookupList[];
+}
+
+export interface LookupValueCreate {
+  code: string;
+  label: string;
+  meta?: Record<string, string> | null;
+  sort_order?: number;
+}
+
+export interface LookupValueUpdate extends LookupValueCreate {
+  is_active: boolean;
+}
+
+export interface LookupValue extends LookupValueUpdate {
+  id?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+// Convenience type for garage meta
+export interface GarageMeta {
+  address?: string;
+  city?: string;
+  phone?: string;
+}
+
+// ── Costs Incurred ────────────────────────────────────────────────────────────
+
+export type CostType =
+  | "maintenance"
+  | "repair"
+  | "insurance"
+  | "tax"
+  | "fitness_certificate"
+  | "pollution_check"
+  | "purchasing_cost"
+  | "other";
+
+/** @deprecated Use CostType */
+export type ServiceType = CostType;
+
+export interface CostIncurredCreate {
+  vehicle_id: string;
+  /** Lookup code from cost_type list */
+  cost_type: string;
+  description?: string | null;
+  cost: string;
+  service_date: string;
+  /** Lookup code from garage list */
+  garage?: string | null;
+  odometer_reading?: number | null;
+}
+
+/** PUT payload — vehicle_id is immutable after creation */
+export interface CostIncurredUpdate {
+  cost_type: string;
+  description?: string | null;
+  cost: string;
+  service_date: string;
+  garage?: string | null;
+  odometer_reading?: number | null;
+}
+
+export interface CostIncurred extends CostIncurredCreate {
+  id?: string;
+  recorded_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface CostIncurredList {
+  data?: CostIncurred[];
+  meta?: ListMeta;
+}
+
+/** @deprecated Use CostIncurredCreate */
+export type ServiceExpenseCreate = CostIncurredCreate;
+/** @deprecated Use CostIncurred */
+export type ServiceExpense = CostIncurred;
+/** @deprecated Use CostIncurredList */
+export type ServiceExpenseList = CostIncurredList;

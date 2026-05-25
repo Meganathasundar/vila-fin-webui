@@ -6,7 +6,8 @@ const PATH_LABELS: Record<string, string> = {
   customers: "Customers",
   vehicles: "Vehicles",
   loans: "Loans",
-  "service-expenses": "Service Expenses",
+  "costs-incurred": "Costs Incurred",
+  "lookups": "Lookups",
   new: "New",
 };
 

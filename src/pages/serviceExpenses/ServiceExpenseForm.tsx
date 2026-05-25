@@ -6,6 +6,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { createServiceExpense } from "@/api/serviceExpenses";
+import type { ServiceType } from "@/types/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,10 @@ const schema = z.object({
   cost: z.coerce.number().positive("Must be positive"),
   service_date: z.string().min(1, "Required"),
   garage_name: z.string().optional(),
-  odometer_reading: z.coerce.number().int().nonnegative().optional(),
+  odometer_reading: z.preprocess(
+    (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
+    z.number().int().nonnegative().optional()
+  ),
 });
 
 type FormValues = z.infer<typeof schema>;
@@ -51,9 +55,13 @@ export default function ServiceExpenseForm() {
   const mutation = useMutation({
     mutationFn: (data: FormValues) =>
       createServiceExpense({
-        ...data,
-        cost: String(data.cost),
-        odometer_reading: data.odometer_reading,
+        vehicle_id: data.vehicle_id,
+        service_type: data.service_type as ServiceType,
+        cost: Number(data.cost).toFixed(2),
+        service_date: data.service_date,
+        ...(data.description?.trim() ? { description: data.description.trim() } : {}),
+        ...(data.garage_name?.trim() ? { garage_name: data.garage_name.trim() } : {}),
+        ...(data.odometer_reading !== undefined ? { odometer_reading: data.odometer_reading } : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["service-expenses"] });

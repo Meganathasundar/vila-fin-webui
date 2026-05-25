@@ -10,8 +10,8 @@ export async function logout(): Promise<void> {
   await apiClient.post("/auth/logout");
 }
 
-export async function refreshToken(): Promise<TokenResponse> {
-  const res = await apiClient.post<TokenResponse>("/auth/refresh");
+export async function refreshToken(rt: string): Promise<TokenResponse> {
+  const res = await apiClient.post<TokenResponse>("/auth/refresh", { refresh_token: rt });
   return res.data;
 }
 

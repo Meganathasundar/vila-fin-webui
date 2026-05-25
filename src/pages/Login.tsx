@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,7 +18,6 @@ type FormValues = z.infer<typeof schema>;
 
 export default function Login() {
   const { user, login } = useAuth();
-  const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
 
   const {
@@ -33,7 +32,7 @@ export default function Login() {
     setServerError(null);
     try {
       await login(data.phone, data.password);
-      navigate("/");
+      // Redirect is handled by the "if (user)" guard above
     } catch {
       setServerError("Invalid phone or password");
     }
