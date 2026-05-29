@@ -123,6 +123,7 @@ export interface VehicleList {
 export interface LoanCreate {
   customer_id: string;
   vehicle_id: string;
+  guarantor_id?: string | null;
   loan_type?: "vehicle_sale" | "external_purchase";
   principal_amount: string;
   interest_rate: string;
@@ -140,6 +141,7 @@ export interface LoanUpdate {
   disbursement_date?: string;
   maturity_date?: string;
   status: "draft" | "active" | "closed" | "defaulted" | "cancelled";
+  guarantor_id?: string | null;
   notes?: string;
 }
 
@@ -148,6 +150,7 @@ export interface Loan extends LoanUpdate {
   loan_number?: string;
   customer_id?: string;
   vehicle_id?: string;
+  guarantor_id?: string | null;
   created_by?: string;
   created_at?: string;
   updated_at?: string;

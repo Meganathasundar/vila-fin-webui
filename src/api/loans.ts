@@ -7,6 +7,8 @@ interface ListParams {
   status?: string;
   loan_type?: string;
   loan_number?: string;
+  customer_id?: string;
+  guarantor_id?: string;
 }
 
 export async function listLoans(params: ListParams = {}): Promise<LoanList> {
