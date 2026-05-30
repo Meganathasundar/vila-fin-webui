@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
-import { getCustomer } from "@/api/customers";
+import { getPerson } from "@/api/persons";
 import { listLoans } from "@/api/loans";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,24 +11,24 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { DateDisplay } from "@/components/shared/DateDisplay";
 import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { CustomerForm } from "./CustomerForm";
+import { PersonForm } from "./CustomerForm";
 import { usePermission } from "@/hooks/usePermission";
 import type { Loan } from "@/types/api";
 
-export default function CustomerDetail() {
+export default function PersonDetail() {
   const { id } = useParams<{ id: string }>();
   const [editing, setEditing] = useState(false);
-  const canEdit = usePermission("edit_customer");
+  const canEdit = usePermission("edit_person");
 
-  const { data: customer, isLoading } = useQuery({
-    queryKey: ["customers", id],
-    queryFn: () => getCustomer(id!),
+  const { data: person, isLoading } = useQuery({
+    queryKey: ["persons", id],
+    queryFn: () => getPerson(id!),
     enabled: !!id,
   });
 
   const { data: loans } = useQuery({
     queryKey: ["loans", { customer_id: id }],
-    queryFn: () => listLoans({ limit: 50 }),
+    queryFn: () => listLoans({ customer_id: id, limit: 50 }),
     enabled: !!id,
   });
 
@@ -41,16 +41,16 @@ export default function CustomerDetail() {
     );
   }
 
-  if (!customer) {
-    return <p className="text-muted-foreground">Customer not found.</p>;
+  if (!person) {
+    return <p className="text-muted-foreground">Person not found.</p>;
   }
 
-  const customerLoans = (loans?.data ?? []).filter((l: Loan) => l.customer_id === id);
+  const personLoans = loans?.data ?? [];
 
   return (
     <div className="space-y-6 max-w-4xl">
       <PageHeader
-        title={customer.full_name ?? "Customer"}
+        title={person.full_name ?? "Person"}
         actions={
           canEdit && !editing ? (
             <Button size="sm" onClick={() => setEditing(true)}>
@@ -62,26 +62,26 @@ export default function CustomerDetail() {
 
       {editing ? (
         <Card>
-          <CardHeader><CardTitle>Edit Customer</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Edit Person</CardTitle></CardHeader>
           <CardContent>
-            <CustomerForm customer={customer} onSuccess={() => setEditing(false)} />
+            <PersonForm person={person} onSuccess={() => setEditing(false)} />
           </CardContent>
         </Card>
       ) : (
         <Card>
-          <CardHeader><CardTitle>Customer Info</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Person Info</CardTitle></CardHeader>
           <CardContent>
             <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
               {[
-                ["Full Name", customer.full_name],
-                ["Phone", customer.phone],
-                ["Alt Phone", customer.alt_phone ?? "—"],
-                ["Address", customer.address ?? "—"],
-                ["City", customer.city ?? "—"],
-                ["State", customer.state ?? "—"],
-                ["Pincode", customer.pincode ?? "—"],
-                ["ID Type", customer.id_type?.replace("_", " ")],
-                ["ID Number", customer.id_number],
+                ["Full Name", person.full_name],
+                ["Phone", person.phone],
+                ["Alt Phone", person.alt_phone ?? "—"],
+                ["Address", person.address ?? "—"],
+                ["City", person.city ?? "—"],
+                ["State", person.state ?? "—"],
+                ["Pincode", person.pincode ?? "—"],
+                ["ID Type", person.id_type?.replace("_", " ")],
+                ["ID Number", person.id_number],
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-muted-foreground">{label}</dt>
@@ -90,11 +90,11 @@ export default function CustomerDetail() {
               ))}
               <div>
                 <dt className="text-muted-foreground">KYC Status</dt>
-                <dd><StatusBadge status={customer.kyc_status ?? "pending"} /></dd>
+                <dd><StatusBadge status={person.kyc_status ?? "pending"} /></dd>
               </div>
               <div>
                 <dt className="text-muted-foreground">Created</dt>
-                <dd><DateDisplay value={customer.created_at} /></dd>
+                <dd><DateDisplay value={person.created_at} /></dd>
               </div>
             </dl>
           </CardContent>
@@ -104,8 +104,8 @@ export default function CustomerDetail() {
       <Card>
         <CardHeader><CardTitle>Linked Loans</CardTitle></CardHeader>
         <CardContent className="p-0">
-          {customerLoans.length === 0 ? (
-            <p className="px-6 py-4 text-sm text-muted-foreground">No loans linked to this customer.</p>
+          {personLoans.length === 0 ? (
+            <p className="px-6 py-4 text-sm text-muted-foreground">No loans linked to this person.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -116,7 +116,7 @@ export default function CustomerDetail() {
                 </tr>
               </thead>
               <tbody>
-                {customerLoans.map((loan: Loan) => (
+                {personLoans.map((loan: Loan) => (
                   <tr key={loan.id} className="border-b hover:bg-muted/20">
                     <td className="px-4 py-2">
                       <Link to={`/loans/${loan.id}`} className="text-primary hover:underline font-mono text-xs">

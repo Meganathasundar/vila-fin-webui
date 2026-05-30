@@ -53,8 +53,8 @@ export default function App() {
                 handle={{ breadcrumb: "Dashboard" }}
               />
 
-              {/* Customers */}
-              <Route path="/customers" handle={{ breadcrumb: "Customers" }}>
+              {/* Persons */}
+              <Route path="/persons" handle={{ breadcrumb: "Persons" }}>
                 <Route index element={<CustomerList />} />
                 <Route path="new" element={<CustomerNew />} handle={{ breadcrumb: "New" }} />
                 <Route path=":id" element={<CustomerDetail />} handle={{ breadcrumb: "Detail" }} />

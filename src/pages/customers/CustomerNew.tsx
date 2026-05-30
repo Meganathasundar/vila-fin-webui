@@ -1,15 +1,15 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/PageHeader";
-import { CustomerForm } from "./CustomerForm";
+import { PersonForm } from "./CustomerForm";
 
-export default function CustomerNew() {
+export default function PersonNew() {
   return (
     <div className="max-w-2xl">
-      <PageHeader title="Add Customer" />
+      <PageHeader title="Add Person" />
       <Card>
-        <CardHeader><CardTitle>Customer Details</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Person Details</CardTitle></CardHeader>
         <CardContent>
-          <CustomerForm />
+          <PersonForm />
         </CardContent>
       </Card>
     </div>

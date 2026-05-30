@@ -1,8 +1,8 @@
 import { useAuth } from "@/context/AuthContext";
 
 type Action =
-  | "create_customer"
-  | "edit_customer"
+  | "create_person"
+  | "edit_person"
   | "delete_record"
   | "create_vehicle"
   | "edit_vehicle"
@@ -17,8 +17,8 @@ type Action =
 
 const ROLE_PERMISSIONS: Record<string, Action[]> = {
   admin: [
-    "create_customer",
-    "edit_customer",
+    "create_person",
+    "edit_person",
     "delete_record",
     "create_vehicle",
     "edit_vehicle",
@@ -32,8 +32,8 @@ const ROLE_PERMISSIONS: Record<string, Action[]> = {
     "view_all_staff",
   ],
   manager: [
-    "create_customer",
-    "edit_customer",
+    "create_person",
+    "edit_person",
     "create_vehicle",
     "edit_vehicle",
     "create_loan",
@@ -45,8 +45,8 @@ const ROLE_PERMISSIONS: Record<string, Action[]> = {
     "edit_kyc_status",
   ],
   agent: [
-    "create_customer",
-    "edit_customer",
+    "create_person",
+    "edit_person",
     "create_vehicle",
     "edit_vehicle",
     "create_loan",

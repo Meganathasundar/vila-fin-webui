@@ -45,7 +45,7 @@ export interface RefreshRequest {
   refresh_token: string;
 }
 
-export interface CustomerCreate {
+export interface PersonCreate {
   full_name: string;
   phone: string;
   alt_phone?: string;
@@ -57,26 +57,26 @@ export interface CustomerCreate {
   id_number: string;
 }
 
-export interface CustomerUpdate extends CustomerCreate {
+export interface PersonUpdate extends PersonCreate {
   kyc_status: "pending" | "uploaded" | "verified" | "rejected";
 }
 
-export interface Customer extends CustomerUpdate {
+export interface Person extends PersonUpdate {
   id?: string;
   created_by?: string;
   created_at?: string;
   updated_at?: string;
 }
 
+export interface PersonList {
+  data?: Person[];
+  meta?: ListMeta;
+}
+
 export interface ListMeta {
   limit?: number;
   offset?: number;
   total?: number;
-}
-
-export interface CustomerList {
-  data?: Customer[];
-  meta?: ListMeta;
 }
 
 export interface VehicleCreate {

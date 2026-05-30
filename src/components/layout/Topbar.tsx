@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 
 const PATH_LABELS: Record<string, string> = {
   dashboard: "Dashboard",
-  customers: "Customers",
+  persons: "Persons",
   vehicles: "Vehicles",
   loans: "Loans",
   "costs-incurred": "Costs Incurred",

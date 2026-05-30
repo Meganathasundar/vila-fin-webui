@@ -3,7 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { getLoan, activateLoan, closeLoan, defaultLoan, cancelLoan } from "@/api/loans";
-import { getCustomer } from "@/api/customers";
+import { getPerson } from "@/api/persons";
 import { getVehicle } from "@/api/vehicles";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -61,8 +61,8 @@ export default function LoanDetail() {
   });
 
   const { data: customer } = useQuery({
-    queryKey: ["customers", loan?.customer_id],
-    queryFn: () => getCustomer(loan!.customer_id!),
+    queryKey: ["persons", loan?.customer_id],
+    queryFn: () => getPerson(loan!.customer_id!),
     enabled: !!loan?.customer_id,
   });
 
@@ -151,10 +151,10 @@ export default function LoanDetail() {
         </CardContent>
       </Card>
 
-      {/* Linked customer */}
+      {/* Linked person */}
       {customer && (
         <Card>
-          <CardHeader><CardTitle>Customer</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Person</CardTitle></CardHeader>
           <CardContent>
             <div className="flex items-center justify-between">
               <div>
@@ -163,7 +163,7 @@ export default function LoanDetail() {
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={customer.kyc_status ?? "pending"} />
-                <Link to={`/customers/${customer.id}`}>
+                <Link to={`/persons/${customer.id}`}>
                   <Button size="sm" variant="outline">View</Button>
                 </Link>
               </div>
