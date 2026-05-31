@@ -1,5 +1,5 @@
 import { apiClient } from "./client";
-import type { Vehicle, VehicleCreate, VehicleUpdate, VehicleList } from "@/types/api";
+import type { Vehicle, VehicleCreate, VehicleUpdate, VehicleList, VehiclePurchase, VehiclePurchaseCreate } from "@/types/api";
 
 interface ListParams {
   limit?: number;
@@ -26,5 +26,20 @@ export async function createVehicle(data: VehicleCreate): Promise<Vehicle> {
 
 export async function updateVehicle(id: string, data: VehicleUpdate): Promise<Vehicle> {
   const res = await apiClient.put<Vehicle>(`/vehicles/${id}`, data);
+  return res.data;
+}
+
+export async function getVehiclePurchase(vehicleId: string): Promise<VehiclePurchase> {
+  const res = await apiClient.get<VehiclePurchase>(`/vehicles/${vehicleId}/purchase`);
+  return res.data;
+}
+
+export async function createVehiclePurchase(vehicleId: string, data: VehiclePurchaseCreate): Promise<VehiclePurchase> {
+  const res = await apiClient.post<VehiclePurchase>(`/vehicles/${vehicleId}/purchase`, data);
+  return res.data;
+}
+
+export async function updateVehiclePurchase(vehicleId: string, data: VehiclePurchaseCreate): Promise<VehiclePurchase> {
+  const res = await apiClient.put<VehiclePurchase>(`/vehicles/${vehicleId}/purchase`, data);
   return res.data;
 }

@@ -89,14 +89,6 @@ export interface VehicleCreate {
   vehicle_type?: "two_wheeler" | "four_wheeler" | "commercial" | null;
   chassis_no?: string | null;
   engine_no?: string | null;
-  vehicle_cost?: string | null;
-  purchase_date?: string | null;
-  /** Lookup code from vehicle_consultancy list */
-  consultancy?: string | null;
-  /** Amount paid to acquire the vehicle */
-  sale_price?: string | null;
-  /** Final price of the vehicle */
-  final_price?: string | null;
   vehicle_source?: "lender_stock" | "external_collateral";
   current_owner_id?: string | null;
 }
@@ -110,15 +102,31 @@ export interface Vehicle extends VehicleUpdate {
   created_by?: string;
   created_at?: string;
   updated_at?: string;
-  purchase_date?: string | null;
-  sale_price?: string | null;
-  final_price?: string | null;
 }
 
 export interface VehicleList {
   data?: Vehicle[];
   meta?: ListMeta;
 }
+
+export interface VehiclePurchaseCreate {
+  vehicle_cost?: string | null;
+  purchase_date?: string | null;
+  /** Lookup code from vehicle_consultancy list */
+  consultancy?: string | null;
+  sale_price?: string | null;
+  final_price?: string | null;
+}
+
+export interface VehiclePurchase extends VehiclePurchaseCreate {
+  id?: string;
+  vehicle_id?: string;
+  recorded_by?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type InterestSplitMethod = "equal" | "rule_of_78" | "reducing_balance";
 
 export interface LoanCreate {
   customer_id: string;
@@ -129,6 +137,7 @@ export interface LoanCreate {
   interest_rate: string;
   tenure_months: number;
   emi_amount: string;
+  interest_split_method?: InterestSplitMethod;
   notes?: string;
 }
 
@@ -142,6 +151,7 @@ export interface LoanUpdate {
   maturity_date?: string;
   status: "draft" | "active" | "closed" | "defaulted" | "cancelled";
   guarantor_id?: string | null;
+  interest_split_method?: InterestSplitMethod;
   notes?: string;
 }
 
@@ -159,6 +169,44 @@ export interface Loan extends LoanUpdate {
 export interface LoanList {
   data?: Loan[];
   meta?: ListMeta;
+}
+
+// ── Repayment Schedule ────────────────────────────────────────────────────────
+
+export type InstallmentStatus = "pending" | "paid" | "overdue" | "waived";
+
+export interface ScheduleItem {
+  id?: string;
+  seq?: number;
+  due_date?: string;
+  emi?: string;
+  principal?: string;
+  interest?: string;
+  balance?: string;
+  status?: InstallmentStatus;
+  paid_amount?: string | null;
+  paid_date?: string | null;
+}
+
+export interface ScheduleSummary {
+  no_of_dues?: number;
+  total_principal?: string;
+  total_interest?: string;
+  total_payable?: string;
+  outstanding?: string;
+  next_due_date?: string | null;
+  interest_split_method?: InterestSplitMethod;
+}
+
+export interface ScheduleResponse {
+  installments?: ScheduleItem[];
+  summary?: ScheduleSummary;
+}
+
+export interface UpdateInstallmentRequest {
+  status: "paid" | "waived";
+  paid_amount?: string;
+  paid_date?: string;
 }
 
 // ── Lookups ──────────────────────────────────────────────────────────────────

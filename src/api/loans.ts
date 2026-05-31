@@ -1,5 +1,8 @@
 import { apiClient } from "./client";
-import type { Loan, LoanCreate, LoanUpdate, LoanList } from "@/types/api";
+import type {
+  Loan, LoanCreate, LoanUpdate, LoanList,
+  ScheduleResponse, ScheduleItem, UpdateInstallmentRequest,
+} from "@/types/api";
 
 interface ListParams {
   limit?: number;
@@ -28,6 +31,23 @@ export async function createLoan(data: LoanCreate): Promise<Loan> {
 
 export async function updateLoan(id: string, data: LoanUpdate): Promise<Loan> {
   const res = await apiClient.put<Loan>(`/loans/${id}`, data);
+  return res.data;
+}
+
+export async function getLoanSchedule(id: string): Promise<ScheduleResponse> {
+  const res = await apiClient.get<ScheduleResponse>(`/loans/${id}/schedule`);
+  return res.data;
+}
+
+export async function updateInstallment(
+  loanId: string,
+  installmentId: string,
+  data: UpdateInstallmentRequest,
+): Promise<ScheduleItem> {
+  const res = await apiClient.put<ScheduleItem>(
+    `/loans/${loanId}/schedule/${installmentId}`,
+    data,
+  );
   return res.data;
 }
 

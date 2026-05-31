@@ -32,6 +32,12 @@ export default function PersonDetail() {
     enabled: !!id,
   });
 
+  const { data: guarantorLoans } = useQuery({
+    queryKey: ["loans", { guarantor_id: id }],
+    queryFn: () => listLoans({ guarantor_id: id, limit: 50 }),
+    enabled: !!id,
+  });
+
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -46,6 +52,7 @@ export default function PersonDetail() {
   }
 
   const personLoans = loans?.data ?? [];
+  const personGuarantorLoans = guarantorLoans?.data ?? [];
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -102,10 +109,10 @@ export default function PersonDetail() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>Linked Loans</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Loans as Borrower</CardTitle></CardHeader>
         <CardContent className="p-0">
           {personLoans.length === 0 ? (
-            <p className="px-6 py-4 text-sm text-muted-foreground">No loans linked to this person.</p>
+            <p className="px-6 py-4 text-sm text-muted-foreground">No loans as primary borrower.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -132,6 +139,38 @@ export default function PersonDetail() {
           )}
         </CardContent>
       </Card>
+
+      {personGuarantorLoans.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Loans as Guarantor</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/30">
+                  <th className="px-4 py-2 text-left">Loan No</th>
+                  <th className="px-4 py-2 text-left">Principal</th>
+                  <th className="px-4 py-2 text-left">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {personGuarantorLoans.map((loan: Loan) => (
+                  <tr key={loan.id} className="border-b hover:bg-muted/20">
+                    <td className="px-4 py-2">
+                      <Link to={`/loans/${loan.id}`} className="text-primary hover:underline font-mono text-xs">
+                        {loan.loan_number ?? "—"}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2"><CurrencyDisplay value={loan.principal_amount} /></td>
+                    <td className="px-4 py-2"><StatusBadge status={loan.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

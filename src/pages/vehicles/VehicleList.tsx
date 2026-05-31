@@ -8,9 +8,6 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DataTable } from "@/components/shared/DataTable";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { DateDisplay } from "@/components/shared/DateDisplay";
-import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
-import { LookupDisplay } from "@/components/shared/LookupDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useDebounce } from "@/hooks/useDebounce";
 import type { Vehicle } from "@/types/api";
@@ -37,18 +34,14 @@ const COL_OPTIONS: ColOption[] = [
   { id: "engine_no", label: "Engine No" },
   { id: "vehicle_source", label: "Source" },
   { id: "current_status", label: "Status", always: true },
-  { id: "consultancy", label: "Consultancy" },
-  { id: "purchase_date", label: "Purchase Date" },
-  { id: "sale_price", label: "Sale Price" },
-  { id: "final_price", label: "Final Price" },
 ];
 
-const DEFAULT_VISIBLE = new Set(["registration_no", "make", "model", "year", "current_status", "consultancy", "sale_price", "purchase_date"]);
+const DEFAULT_VISIBLE = new Set(["registration_no", "make", "model", "year", "current_status"]);
 
 export default function VehicleList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("available"); // default: available vehicles only
   const [sourceFilter, setSourceFilter] = useState("all");
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
   const [visibleCols, setVisibleCols] = useState<Set<string>>(DEFAULT_VISIBLE);
@@ -145,35 +138,6 @@ export default function VehicleList() {
       cell: ({ getValue }) => (
         <span className="font-mono text-xs">{(getValue() as string) ?? "—"}</span>
       ),
-    },
-    {
-      id: "consultancy",
-      header: "Consultancy",
-      accessorKey: "consultancy",
-      cell: ({ getValue }) => (
-        <LookupDisplay listCode="vehicle_consultancy" id={getValue() as string | null} />
-      ),
-    },
-    {
-      id: "purchase_date",
-      header: "Purchase Date",
-      accessorKey: "purchase_date",
-      cell: ({ getValue }) =>
-        getValue() ? <DateDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
-    },
-    {
-      id: "sale_price",
-      header: "Sale Price",
-      accessorKey: "sale_price",
-      cell: ({ getValue }) =>
-        getValue() ? <CurrencyDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
-    },
-    {
-      id: "final_price",
-      header: "Final Price",
-      accessorKey: "final_price",
-      cell: ({ getValue }) =>
-        getValue() ? <CurrencyDisplay value={getValue() as string} /> : <span className="text-muted-foreground">—</span>,
     },
   ];
 

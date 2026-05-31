@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { createLoan } from "@/api/loans";
 import { createPerson, listPersons } from "@/api/persons";
-import { createVehicle } from "@/api/vehicles";
+import { createVehicle, listVehicles } from "@/api/vehicles";
 import { createCostIncurred } from "@/api/costsIncurred";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,9 +20,10 @@ import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LookupSelectField } from "@/components/shared/LookupSelectField";
 import { PersonMatchDialog } from "@/components/shared/PersonMatchDialog";
+import { VehicleMatchDialog } from "@/components/shared/VehicleMatchDialog";
 import { calculateEMI, calculateTotalPayable, calculateTotalInterest } from "@/utils/emi";
 import { formatINR } from "@/utils/currency";
-import type { Person } from "@/types/api";
+import type { Person, Vehicle } from "@/types/api";
 
 // ── Schemas ────────────────────────────────────────────────────────────────────
 
@@ -65,6 +66,7 @@ const vehicleSchema = z.object({
 
 const loanSchema = z.object({
   loan_type: z.enum(["vehicle_sale", "external_purchase"]),
+  interest_split_method: z.enum(["equal", "rule_of_78", "reducing_balance"]).default("reducing_balance"),
   principal_amount: z.coerce.number().positive("Must be positive"),
   interest_rate: z.coerce.number().positive("Must be positive"),
   tenure_months: z.coerce.number().int().positive("Must be positive"),
@@ -108,6 +110,30 @@ function ExistingPersonBanner({ person, onClear }: { person: Person; onClear: ()
         </p>
         <div className="pt-0.5">
           <StatusBadge status={person.kyc_status ?? "pending"} />
+        </div>
+      </div>
+      <Button size="sm" variant="outline" className="shrink-0" onClick={onClear}>
+        Change
+      </Button>
+    </div>
+  );
+}
+
+// ── ExistingVehicleBanner — shown when user selected a vehicle from lookup ─────
+
+function ExistingVehicleBanner({ vehicle, onClear }: { vehicle: Vehicle; onClear: () => void }) {
+  return (
+    <div className="rounded-md border border-primary/30 bg-primary/5 p-4 flex items-start justify-between gap-4">
+      <div className="space-y-0.5">
+        <p className="font-mono font-semibold text-sm">{vehicle.registration_no}</p>
+        <p className="text-sm text-muted-foreground">
+          {vehicle.make} {vehicle.model}
+          {vehicle.year ? ` · ${vehicle.year}` : ""}
+          {vehicle.color ? ` · ${vehicle.color}` : ""}
+        </p>
+        <div className="flex items-center gap-1.5 pt-0.5">
+          {vehicle.vehicle_source && <StatusBadge status={vehicle.vehicle_source} />}
+          {vehicle.current_status && <StatusBadge status={vehicle.current_status} />}
         </div>
       </div>
       <Button size="sm" variant="outline" className="shrink-0" onClick={onClear}>
@@ -286,7 +312,26 @@ export default function LoanForm() {
   const [existingCustomer, setExistingCustomer] = useState<Person | null>(null);
   const [existingGuarantor, setExistingGuarantor] = useState<Person | null>(null);
 
+  // Existing vehicle selected from lookup (bypasses createVehicle on submit)
+  const [existingVehicle, setExistingVehicle] = useState<Vehicle | null>(null);
+
   const [vehicleData, setVehicleData] = useState<VehicleValues | null>(null);
+
+  // ── Vehicle registration number lookup ──────────────────────────────────────
+  const [regNoSearch, setRegNoSearch] = useState("");
+  const [vehicleMatches, setVehicleMatches] = useState<Vehicle[]>([]);
+
+  const { data: regNoData } = useQuery({
+    queryKey: ["vehicles-lookup", "reg", regNoSearch],
+    queryFn: () => listVehicles({ registration_no: regNoSearch, limit: 5 }),
+    enabled: regNoSearch.length >= 3,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    const found = regNoData?.data ?? [];
+    if (found.length > 0) setVehicleMatches(found);
+  }, [regNoData]);
 
   // ── Per-step forms ──────────────────────────────────────────────────────────
 
@@ -312,7 +357,7 @@ export default function LoanForm() {
 
   const loanForm = useForm<LoanValues>({
     resolver: zodResolver(loanSchema),
-    defaultValues: { loan_type: "vehicle_sale", tenure_months: 12, interest_rate: 12 },
+    defaultValues: { loan_type: "vehicle_sale", interest_split_method: "reducing_balance", tenure_months: 12, interest_rate: 12 },
   });
 
   const s2 = loanForm.watch();
@@ -357,41 +402,48 @@ export default function LoanForm() {
         guarantorId = g.id ?? null;
       }
 
-      // 3. Create vehicle
-      const vd = vehicleData!;
-      const vehicle = await createVehicle({
-        registration_no: vd.registration_no,
-        make: vd.make,
-        model: vd.model,
-        year: vd.year,
-        color: vd.color || undefined,
-        fuel_type: vd.fuel_type || undefined,
-        vehicle_type: vd.vehicle_type || undefined,
-        vehicle_source: vd.vehicle_source ?? "lender_stock",
-        chassis_no: vd.chassis_no || undefined,
-        engine_no: vd.engine_no || undefined,
-        purchase_date: vd.purchase_date || undefined,
-        consultancy: vd.consultancy || null,
-        sale_price: vd.sale_price ? String(Number(vd.sale_price).toFixed(2)) : undefined,
-        vehicle_cost: vd.vehicle_cost ? String(Number(vd.vehicle_cost).toFixed(2)) : undefined,
-      });
-
-      if (vd.vehicle_cost && vehicle.id) {
-        await createCostIncurred({
-          vehicle_id: vehicle.id,
-          cost_type: "purchasing_cost",
-          cost: String(Number(vd.vehicle_cost).toFixed(2)),
-          service_date: vd.purchase_date || new Date().toISOString().split("T")[0],
-          description: "Vehicle purchase cost",
+      // 3. Vehicle — use existing or create new
+      let vehicleId: string;
+      if (existingVehicle?.id) {
+        vehicleId = existingVehicle.id;
+      } else {
+        const vd = vehicleData!;
+        const vehicle = await createVehicle({
+          registration_no: vd.registration_no,
+          make: vd.make,
+          model: vd.model,
+          year: vd.year,
+          color: vd.color?.trim() || null,
+          fuel_type: vd.fuel_type || undefined,
+          vehicle_type: vd.vehicle_type || undefined,
+          vehicle_source: vd.vehicle_source ?? "lender_stock",
+          chassis_no: vd.chassis_no?.trim() || null,
+          engine_no: vd.engine_no?.trim() || null,
+          purchase_date: vd.purchase_date?.trim() || null,
+          consultancy: vd.consultancy || null,
+          sale_price: vd.sale_price ? String(Number(vd.sale_price).toFixed(2)) : null,
+          vehicle_cost: vd.vehicle_cost ? String(Number(vd.vehicle_cost).toFixed(2)) : undefined,
         });
+
+        if (vd.vehicle_cost && vehicle.id) {
+          await createCostIncurred({
+            vehicle_id: vehicle.id,
+            cost_type: "purchasing_cost",
+            cost: String(Number(vd.vehicle_cost).toFixed(2)),
+            service_date: vd.purchase_date || new Date().toISOString().split("T")[0],
+            description: "Vehicle purchase cost",
+          });
+        }
+        vehicleId = vehicle.id!;
       }
 
       // 4. Create loan
       return createLoan({
         customer_id: customerId,
-        vehicle_id: vehicle.id!,
+        vehicle_id: vehicleId,
         guarantor_id: guarantorId,
         loan_type: loan.loan_type,
+        interest_split_method: loan.interest_split_method,
         principal_amount: String(loan.principal_amount),
         interest_rate: String(loan.interest_rate),
         tenure_months: loan.tenure_months,
@@ -454,6 +506,17 @@ export default function LoanForm() {
     const loanType = data.vehicle_source === "external_collateral" ? "external_purchase" : "vehicle_sale";
     loanForm.setValue("loan_type", loanType);
     setStep(4);
+  };
+
+  const handleVehicleStepNext = () => {
+    if (existingVehicle) {
+      // Auto-set loan type from existing vehicle's source
+      const loanType = existingVehicle.vehicle_source === "external_collateral" ? "external_purchase" : "vehicle_sale";
+      loanForm.setValue("loan_type", loanType);
+      setStep(4);
+    } else {
+      vehicleForm.handleSubmit(handleVehicleNext)();
+    }
   };
 
   // For review: resolve the display object regardless of new/existing path
@@ -550,11 +613,32 @@ export default function LoanForm() {
         <Card>
           <CardHeader><CardTitle>Step 3 — Vehicle Information</CardTitle></CardHeader>
           <CardContent>
+            {existingVehicle ? (
+              <div className="space-y-4">
+                <ExistingVehicleBanner
+                  vehicle={existingVehicle}
+                  onClear={() => { setExistingVehicle(null); setRegNoSearch(""); setVehicleMatches([]); }}
+                />
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => setStep(2)}>← Back</Button>
+                  <Button onClick={handleVehicleStepNext}>Next →</Button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={vehicleForm.handleSubmit(handleVehicleNext)} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label>Registration No *</Label>
-                  <Input {...vehicleForm.register("registration_no")} placeholder="TN01AB1234" className="uppercase" />
+                  <Input
+                    {...vehicleForm.register("registration_no")}
+                    onBlur={(e) => {
+                      vehicleForm.register("registration_no").onBlur(e);
+                      const val = e.target.value.trim();
+                      if (val.length >= 3) setRegNoSearch(val);
+                    }}
+                    placeholder="TN01AB1234"
+                    className="uppercase"
+                  />
                   {vehicleForm.formState.errors.registration_no && (
                     <p className="text-xs text-destructive">{vehicleForm.formState.errors.registration_no.message}</p>
                   )}
@@ -689,6 +773,18 @@ export default function LoanForm() {
                 <Button type="submit">Next →</Button>
               </div>
             </form>
+            )}
+
+            <VehicleMatchDialog
+              open={vehicleMatches.length > 0}
+              vehicles={vehicleMatches}
+              onSelect={(v) => {
+                setExistingVehicle(v);
+                setVehicleMatches([]);
+                setRegNoSearch("");
+              }}
+              onDismiss={() => { setVehicleMatches([]); setRegNoSearch(""); }}
+            />
           </CardContent>
         </Card>
       )}
@@ -712,6 +808,22 @@ export default function LoanForm() {
                       <SelectItem value="external_purchase">External Purchase</SelectItem>
                     </SelectContent>
                   </Select>
+                </div>
+
+                <div className="col-span-2 space-y-1">
+                  <Label>Amortization Method</Label>
+                  <Select
+                    value={s2.interest_split_method}
+                    onValueChange={(v) => loanForm.setValue("interest_split_method", v as LoanValues["interest_split_method"])}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reducing_balance">Reducing Balance (Actuarial)</SelectItem>
+                      <SelectItem value="equal">Equal — Flat Rate</SelectItem>
+                      <SelectItem value="rule_of_78">Rule of 78 — Sum-of-Digits</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Cannot be changed after the loan is activated.</p>
                 </div>
 
                 <div className="space-y-1">
@@ -761,7 +873,7 @@ export default function LoanForm() {
       )}
 
       {/* ── Step 5: Review & Submit ───────────────────────────────────────────── */}
-      {step === 5 && reviewCustomer && vehicleData && (
+      {step === 5 && reviewCustomer && (existingVehicle || vehicleData) && (
         <Card>
           <CardHeader><CardTitle>Step 5 — Review & Submit</CardTitle></CardHeader>
           <CardContent className="space-y-5">
@@ -802,20 +914,35 @@ export default function LoanForm() {
 
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Vehicle</h3>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div><dt className="text-muted-foreground">Reg No</dt><dd className="font-mono">{vehicleData.registration_no}</dd></div>
-                <div><dt className="text-muted-foreground">Vehicle</dt><dd>{vehicleData.make} {vehicleData.model} ({vehicleData.year})</dd></div>
-                {vehicleData.color && <div><dt className="text-muted-foreground">Color</dt><dd>{vehicleData.color}</dd></div>}
-                {vehicleData.vehicle_source && (
-                  <div><dt className="text-muted-foreground">Source</dt><dd><StatusBadge status={vehicleData.vehicle_source} /></dd></div>
-                )}
-                {vehicleData.sale_price && (
-                  <div><dt className="text-muted-foreground">Sale Price</dt><dd><CurrencyDisplay value={vehicleData.sale_price} /></dd></div>
-                )}
-                {vehicleData.vehicle_cost && (
-                  <div><dt className="text-muted-foreground">Purchase Cost</dt><dd><CurrencyDisplay value={vehicleData.vehicle_cost} /></dd></div>
-                )}
-              </dl>
+              {existingVehicle ? (
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div><dt className="text-muted-foreground">Reg No</dt><dd className="font-mono">{existingVehicle.registration_no}</dd></div>
+                  <div><dt className="text-muted-foreground">Vehicle</dt><dd>{existingVehicle.make} {existingVehicle.model} ({existingVehicle.year})</dd></div>
+                  {existingVehicle.color && <div><dt className="text-muted-foreground">Color</dt><dd>{existingVehicle.color}</dd></div>}
+                  {existingVehicle.vehicle_source && (
+                    <div><dt className="text-muted-foreground">Source</dt><dd><StatusBadge status={existingVehicle.vehicle_source} /></dd></div>
+                  )}
+                  {existingVehicle.current_status && (
+                    <div><dt className="text-muted-foreground">Status</dt><dd><StatusBadge status={existingVehicle.current_status} /></dd></div>
+                  )}
+                  <div className="col-span-2"><dd className="text-xs text-primary">Existing vehicle record</dd></div>
+                </dl>
+              ) : vehicleData && (
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div><dt className="text-muted-foreground">Reg No</dt><dd className="font-mono">{vehicleData.registration_no}</dd></div>
+                  <div><dt className="text-muted-foreground">Vehicle</dt><dd>{vehicleData.make} {vehicleData.model} ({vehicleData.year})</dd></div>
+                  {vehicleData.color && <div><dt className="text-muted-foreground">Color</dt><dd>{vehicleData.color}</dd></div>}
+                  {vehicleData.vehicle_source && (
+                    <div><dt className="text-muted-foreground">Source</dt><dd><StatusBadge status={vehicleData.vehicle_source} /></dd></div>
+                  )}
+                  {vehicleData.sale_price && (
+                    <div><dt className="text-muted-foreground">Sale Price</dt><dd><CurrencyDisplay value={vehicleData.sale_price} /></dd></div>
+                  )}
+                  {vehicleData.vehicle_cost && (
+                    <div><dt className="text-muted-foreground">Purchase Cost</dt><dd><CurrencyDisplay value={vehicleData.vehicle_cost} /></dd></div>
+                  )}
+                </dl>
+              )}
             </div>
 
             <hr />
@@ -824,6 +951,7 @@ export default function LoanForm() {
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Loan</h3>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
                 <div><dt className="text-muted-foreground">Loan Type</dt><dd><StatusBadge status={s2.loan_type} /></dd></div>
+                <div><dt className="text-muted-foreground">Amortization</dt><dd className="capitalize">{(s2.interest_split_method ?? "reducing_balance").replace(/_/g, " ")}</dd></div>
                 <div><dt className="text-muted-foreground">Principal</dt><dd className="font-semibold"><CurrencyDisplay value={s2.principal_amount} /></dd></div>
                 <div><dt className="text-muted-foreground">Interest Rate</dt><dd>{s2.interest_rate}% p.a.</dd></div>
                 <div><dt className="text-muted-foreground">Tenure</dt><dd>{s2.tenure_months} months</dd></div>
