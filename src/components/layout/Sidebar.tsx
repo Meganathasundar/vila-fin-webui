@@ -7,6 +7,7 @@ import {
   Wrench,
   List,
   LogOut,
+  Calculator,
 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -18,6 +19,7 @@ const NAV_ITEMS = [
   { to: "/persons", label: "Persons", icon: Users },
   { to: "/vehicles", label: "Vehicles", icon: Car },
   { to: "/loans", label: "Loans", icon: FileText },
+  { to: "/loans/new", label: "New Loan", icon: Calculator },
   { to: "/costs-incurred", label: "Costs Incurred", icon: Wrench },
   { to: "/lookups", label: "Lookups", icon: List },
 ];

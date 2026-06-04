@@ -6,7 +6,7 @@ interface ListParams {
   offset?: number;
   registration_no?: string;
   current_status?: string;
-  vehicle_source?: string;
+
 }
 
 export async function listVehicles(params: ListParams = {}): Promise<VehicleList> {
@@ -42,4 +42,8 @@ export async function createVehiclePurchase(vehicleId: string, data: VehiclePurc
 export async function updateVehiclePurchase(vehicleId: string, data: VehiclePurchaseCreate): Promise<VehiclePurchase> {
   const res = await apiClient.put<VehiclePurchase>(`/vehicles/${vehicleId}/purchase`, data);
   return res.data;
+}
+
+export async function deleteVehicle(id: string): Promise<void> {
+  await apiClient.delete(`/vehicles/${id}`);
 }

@@ -3,9 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Pencil, ChevronDown, ChevronRight, Database } from "lucide-react";
+import { Plus, Pencil, Trash2, ChevronDown, ChevronRight, Database } from "lucide-react";
 import { toast } from "sonner";
-import { getAllLookups, createLookupList, createLookupValue, updateLookupValue } from "@/api/lookups";
+import { getAllLookups, createLookupList, createLookupValue, updateLookupValue, deleteLookupValue } from "@/api/lookups";
 import { triggerLookupRefresh } from "@/utils/lookupSync";
 import { useLookups } from "@/context/LookupContext";
 import { Button } from "@/components/ui/button";
@@ -215,6 +215,53 @@ function EditValueDialog({
   );
 }
 
+// ── Dialog: Delete value ───────────────────────────────────────────────────────
+
+function DeleteValueDialog({
+  listCode,
+  valueCode,
+  onClose,
+}: {
+  listCode: string;
+  valueCode: string;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: () => deleteLookupValue(listCode, valueCode),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-lookups"] });
+      queryClient.invalidateQueries({ queryKey: ["lookup-detail", listCode] });
+      triggerLookupRefresh();
+      toast.success("Value deleted");
+      onClose();
+    },
+    onError: () => toast.error("Failed to delete value."),
+  });
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted-foreground">
+        This will permanently remove{" "}
+        <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded">{valueCode}</span>{" "}
+        from <strong>{codeToTitle(listCode)}</strong>. This action cannot be undone.
+      </p>
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button
+          type="button"
+          variant="destructive"
+          disabled={mutation.isPending}
+          onClick={() => mutation.mutate()}
+        >
+          {mutation.isPending ? "Deleting…" : "Delete"}
+        </Button>
+      </DialogFooter>
+    </div>
+  );
+}
+
 // ── Dialog: New lookup list ────────────────────────────────────────────────────
 
 function NewListDialog({ onClose }: { onClose: () => void }) {
@@ -279,9 +326,10 @@ interface ListCardProps {
   canManage: boolean;
   onAddValue: (listCode: string) => void;
   onEditValue: (listCode: string, valueCode: string) => void;
+  onDeleteValue: (listCode: string, valueCode: string) => void;
 }
 
-function ListCard({ code, values, canManage, onAddValue, onEditValue }: ListCardProps) {
+function ListCard({ code, values, canManage, onAddValue, onEditValue, onDeleteValue }: ListCardProps) {
   const [expanded, setExpanded] = useState(true);
   const ChevronIcon = expanded ? ChevronDown : ChevronRight;
 
@@ -329,7 +377,7 @@ function ListCard({ code, values, canManage, onAddValue, onEditValue }: ListCard
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground text-xs">Code</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground text-xs">Label</th>
                     <th className="px-3 py-2 text-left font-medium text-muted-foreground text-xs w-20 text-center">Order</th>
-                    {canManage && <th className="px-3 py-2 w-10" />}
+                    {canManage && <th className="px-3 py-2 w-20" />}
                   </tr>
                 </thead>
                 <tbody>
@@ -343,14 +391,24 @@ function ListCard({ code, values, canManage, onAddValue, onEditValue }: ListCard
                       <td className="px-3 py-2 text-xs text-muted-foreground text-center">{v.sort_order ?? 0}</td>
                       {canManage && (
                         <td className="px-3 py-2 text-right">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0"
-                            onClick={() => onEditValue(code, v.code)}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </Button>
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0"
+                              onClick={() => onEditValue(code, v.code)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => onDeleteValue(code, v.code)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </Button>
+                          </div>
                         </td>
                       )}
                     </tr>
@@ -370,6 +428,7 @@ function ListCard({ code, values, canManage, onAddValue, onEditValue }: ListCard
 type DialogState =
   | { type: "add"; listCode: string }
   | { type: "edit"; listCode: string; valueCode: string }
+  | { type: "delete"; listCode: string; valueCode: string }
   | { type: "new-list" }
   | null;
 
@@ -437,6 +496,7 @@ export default function LookupManager() {
               canManage={canManage}
               onAddValue={(c) => setDialog({ type: "add", listCode: c })}
               onEditValue={(c, v) => setDialog({ type: "edit", listCode: c, valueCode: v })}
+              onDeleteValue={(c, v) => setDialog({ type: "delete", listCode: c, valueCode: v })}
             />
           ))}
         </div>
@@ -449,6 +509,7 @@ export default function LookupManager() {
             <DialogTitle>
               {dialog?.type === "add" && `Add Value — ${codeToTitle(dialog.listCode)}`}
               {dialog?.type === "edit" && `Edit Value — ${dialog.valueCode}`}
+              {dialog?.type === "delete" && `Delete Value — ${dialog.valueCode}`}
               {dialog?.type === "new-list" && "Create Lookup List"}
             </DialogTitle>
           </DialogHeader>
@@ -458,6 +519,14 @@ export default function LookupManager() {
           )}
           {dialog?.type === "edit" && (
             <EditValueDialog
+              key={`${dialog.listCode}/${dialog.valueCode}`}
+              listCode={dialog.listCode}
+              valueCode={dialog.valueCode}
+              onClose={closeDialog}
+            />
+          )}
+          {dialog?.type === "delete" && (
+            <DeleteValueDialog
               key={`${dialog.listCode}/${dialog.valueCode}`}
               listCode={dialog.listCode}
               valueCode={dialog.valueCode}

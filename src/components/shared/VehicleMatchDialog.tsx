@@ -39,7 +39,6 @@ export function VehicleMatchDialog({ open, vehicles, onSelect, onDismiss }: Vehi
                   <p className="text-xs text-muted-foreground capitalize">{v.fuel_type}</p>
                 )}
                 <div className="flex items-center gap-1.5 pt-0.5">
-                  {v.vehicle_source && <StatusBadge status={v.vehicle_source} />}
                   {v.current_status && <StatusBadge status={v.current_status} />}
                 </div>
               </div>

@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Pencil, Plus, ArrowDown, ArrowUp, BadgeDollarSign } from "lucide-react";
-import { getVehicle, updateVehicle, getVehiclePurchase, createVehiclePurchase, updateVehiclePurchase } from "@/api/vehicles";
+import { Pencil, Plus, ArrowDown, ArrowUp, ArrowRight, BadgeDollarSign, Trash2 } from "lucide-react";
+import { getVehicle, updateVehicle, deleteVehicle, getVehiclePurchase, createVehiclePurchase, updateVehiclePurchase } from "@/api/vehicles";
+import { listLoans } from "@/api/loans";
 import { listCostsIncurred } from "@/api/costsIncurred";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,14 +22,19 @@ import { LookupSelectField } from "@/components/shared/LookupSelectField";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { VehicleForm } from "./VehicleForm";
 import { usePermission } from "@/hooks/usePermission";
-import type { CostIncurred, VehiclePurchaseCreate } from "@/types/api";
+import type { CostIncurred, Loan, VehiclePurchaseCreate } from "@/types/api";
 
 export default function VehicleDetail() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [costsSort, setCostsSort] = useState<"asc" | "desc">("desc");
   const canEdit = usePermission("edit_vehicle");
+  const canDelete = usePermission("delete_record");
+
+  // ── Delete dialog state ──────────────────────────────────────────────────────
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   // ── Sell dialog state ────────────────────────────────────────────────────────
   const [sellOpen, setSellOpen] = useState(false);
@@ -59,6 +65,16 @@ export default function VehicleDetail() {
     queryKey: ["costs-incurred", { vehicleId: id }],
     queryFn: () => listCostsIncurred({ vehicle_id: id!, limit: 200, offset: 0 }),
     enabled: !!id,
+  });
+
+  const { data: loansData } = useQuery({
+    queryKey: ["loans", { vehicleId: id }],
+    queryFn: () => listLoans({ vehicle_id: id!, limit: 100, offset: 0 }),
+    enabled: !!id,
+    select: (data) => ({
+      ...data,
+      data: (data.data ?? []).filter((l) => l.vehicle_id === id),
+    }),
   });
 
   const rawCosts = costsData?.data ?? [];
@@ -123,6 +139,25 @@ export default function VehicleDetail() {
     },
   });
 
+  // ── Delete mutation ──────────────────────────────────────────────────────────
+
+  const deleteMutation = useMutation({
+    mutationFn: () => {
+      if (!id) throw new Error("No vehicle");
+      return deleteVehicle(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      toast.success("Vehicle deleted");
+      navigate("/vehicles");
+    },
+    onError: (err: { response?: { data?: { error?: { code?: string; message?: string } } } }) => {
+      const apiErr = err?.response?.data?.error;
+      toast.error(apiErr?.message || apiErr?.code || "Failed to delete vehicle.");
+      setDeleteOpen(false);
+    },
+  });
+
   // ── Purchase save mutation ────────────────────────────────────────────────────
 
   const purchaseMutation = useMutation({
@@ -143,7 +178,7 @@ export default function VehicleDetail() {
   });
 
   const openSellDialog = () => {
-    setFinalPrice(purchase?.final_price ?? purchase?.sale_price ?? "");
+    setFinalPrice(purchase?.final_price ?? purchase?.asking_price ?? "");
     setSellOpen(true);
   };
 
@@ -152,8 +187,9 @@ export default function VehicleDetail() {
       vehicle_cost: purchase?.vehicle_cost ?? null,
       purchase_date: purchase?.purchase_date ?? null,
       consultancy: purchase?.consultancy ?? null,
-      sale_price: purchase?.sale_price ?? null,
+      asking_price: purchase?.asking_price ?? null,
       final_price: purchase?.final_price ?? null,
+      sale_date: purchase?.sale_date ?? null,
     });
     setPurchaseEditOpen(true);
   };
@@ -198,6 +234,11 @@ export default function VehicleDetail() {
                   <Pencil className="h-4 w-4 mr-1" />Edit
                 </Button>
               )}
+              {canDelete && (
+                <Button size="sm" variant="destructive" onClick={() => setDeleteOpen(true)}>
+                  <Trash2 className="h-4 w-4 mr-1" />Delete
+                </Button>
+              )}
             </div>
           ) : undefined
         }
@@ -205,7 +246,6 @@ export default function VehicleDetail() {
 
       <div className="flex gap-3 flex-wrap">
         <StatusBadge status={vehicle.current_status ?? "available"} />
-        <StatusBadge status={vehicle.vehicle_source ?? "lender_stock"} />
       </div>
 
       {editing ? (
@@ -240,11 +280,6 @@ export default function VehicleDetail() {
                   <dd className="font-medium capitalize">{value}</dd>
                 </div>
               ))}
-
-              <div>
-                <dt className="text-muted-foreground">Vehicle Source</dt>
-                <dd><StatusBadge status={vehicle.vehicle_source ?? "lender_stock"} /></dd>
-              </div>
 
               <div>
                 <dt className="text-muted-foreground">Total Cost Incurred</dt>
@@ -300,9 +335,9 @@ export default function VehicleDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-muted-foreground">Sale Price</dt>
+                <dt className="text-muted-foreground">Asking Price</dt>
                 <dd className="font-medium">
-                  {purchase.sale_price ? <CurrencyDisplay value={purchase.sale_price} /> : <span className="text-muted-foreground">—</span>}
+                  {purchase.asking_price ? <CurrencyDisplay value={purchase.asking_price} /> : <span className="text-muted-foreground">—</span>}
                 </dd>
               </div>
               <div>
@@ -311,7 +346,47 @@ export default function VehicleDetail() {
                   {purchase.final_price ? <CurrencyDisplay value={purchase.final_price} /> : <span className="text-muted-foreground">—</span>}
                 </dd>
               </div>
+              <div>
+                <dt className="text-muted-foreground">Sale Date</dt>
+                <dd className="font-medium">
+                  {purchase.sale_date ? <DateDisplay value={purchase.sale_date} /> : <span className="text-muted-foreground">—</span>}
+                </dd>
+              </div>
             </dl>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Loans */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Loans</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {(loansData?.data ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">No loans linked to this vehicle.</p>
+          ) : (
+            <div className="divide-y text-sm">
+              {(loansData?.data ?? []).map((loan: Loan) => (
+                <div key={loan.id} className="py-2.5 grid grid-cols-[1fr_1fr_1fr_1fr_2rem] gap-3 items-center">
+                  <div>
+                    <span className="font-mono text-xs text-muted-foreground">{loan.loan_number}</span>
+                  </div>
+                  <div><StatusBadge status={loan.status} /></div>
+                  <div className="font-medium"><CurrencyDisplay value={loan.principal_amount} /></div>
+                  <div className="text-muted-foreground">
+                    {loan.disbursement_date
+                      ? <DateDisplay value={loan.disbursement_date} />
+                      : <span className="italic">Not disbursed</span>}
+                  </div>
+                  <Link to={`/loans/${loan.id}`}>
+                    <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </Button>
+                  </Link>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>
@@ -412,12 +487,12 @@ export default function VehicleDetail() {
               />
             </div>
             <div className="space-y-1">
-              <Label>Sale Price (₹)</Label>
+              <Label>Asking Price (₹)</Label>
               <Input
                 type="number"
                 step="0.01"
-                value={purchaseForm.sale_price ?? ""}
-                onChange={(e) => setPurchaseForm((p) => ({ ...p, sale_price: e.target.value || null }))}
+                value={purchaseForm.asking_price ?? ""}
+                onChange={(e) => setPurchaseForm((p) => ({ ...p, asking_price: e.target.value || null }))}
                 placeholder="e.g. 380000.00"
               />
             </div>
@@ -431,6 +506,14 @@ export default function VehicleDetail() {
                 placeholder="e.g. 370000.00"
               />
             </div>
+            <div className="space-y-1">
+              <Label>Sale Date</Label>
+              <Input
+                type="date"
+                value={purchaseForm.sale_date ?? ""}
+                onChange={(e) => setPurchaseForm((p) => ({ ...p, sale_date: e.target.value || null }))}
+              />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setPurchaseEditOpen(false)}>Cancel</Button>
@@ -442,8 +525,9 @@ export default function VehicleDetail() {
                   vehicle_cost: toStr(purchaseForm.vehicle_cost),
                   purchase_date: purchaseForm.purchase_date || null,
                   consultancy: purchaseForm.consultancy || null,
-                  sale_price: toStr(purchaseForm.sale_price),
+                  asking_price: toStr(purchaseForm.asking_price),
                   final_price: toStr(purchaseForm.final_price),
+                  sale_date: purchaseForm.sale_date || null,
                 });
               }}
               disabled={purchaseMutation.isPending}
@@ -468,6 +552,30 @@ export default function VehicleDetail() {
             <Button variant="outline" onClick={() => setRevertOpen(false)}>Cancel</Button>
             <Button onClick={() => revertMutation.mutate()} disabled={revertMutation.isPending}>
               {revertMutation.isPending ? "Saving…" : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete dialog ──────────────────────────────────────────────────────── */}
+      <Dialog open={deleteOpen} onOpenChange={(o) => !o && setDeleteOpen(false)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Vehicle</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground py-2">
+            Are you sure you want to permanently delete{" "}
+            <span className="font-medium text-foreground">{vehicle.registration_no}</span>?
+            This action cannot be undone.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => deleteMutation.mutate()}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -501,10 +609,10 @@ export default function VehicleDetail() {
               </p>
             </div>
 
-            {purchase?.sale_price && (
+            {purchase?.asking_price && (
               <div className="rounded-md bg-muted/50 border px-3 py-2 text-sm flex justify-between">
-                <span className="text-muted-foreground">Listed sale price</span>
-                <span className="font-medium"><CurrencyDisplay value={purchase.sale_price} /></span>
+                <span className="text-muted-foreground">Asking price</span>
+                <span className="font-medium"><CurrencyDisplay value={purchase.asking_price} /></span>
               </div>
             )}
           </div>

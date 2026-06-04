@@ -1,14 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { createLoan } from "@/api/loans";
+import { createLoan, calculateEmi } from "@/api/loans";
 import { createPerson, listPersons } from "@/api/persons";
 import { createVehicle, listVehicles } from "@/api/vehicles";
-import { createCostIncurred } from "@/api/costsIncurred";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,9 +20,10 @@ import { PageHeader } from "@/components/shared/PageHeader";
 import { LookupSelectField } from "@/components/shared/LookupSelectField";
 import { PersonMatchDialog } from "@/components/shared/PersonMatchDialog";
 import { VehicleMatchDialog } from "@/components/shared/VehicleMatchDialog";
+import { EmiCalculator, type EmiCalcSnapshot } from "@/components/shared/EmiCalculator";
 import { calculateEMI, calculateTotalPayable, calculateTotalInterest } from "@/utils/emi";
 import { formatINR } from "@/utils/currency";
-import type { Person, Vehicle } from "@/types/api";
+import type { Person, Vehicle, EMICalculateResponse } from "@/types/api";
 
 // ── Schemas ────────────────────────────────────────────────────────────────────
 
@@ -49,24 +49,13 @@ const vehicleSchema = z.object({
   color: z.string().optional(),
   fuel_type: z.enum(["petrol", "diesel", "electric", "hybrid", "cng", "other"]).optional(),
   vehicle_type: z.enum(["two_wheeler", "four_wheeler", "commercial"]).optional(),
-  vehicle_source: z.enum(["lender_stock", "external_collateral"]).optional(),
   chassis_no: z.string().optional(),
   engine_no: z.string().optional(),
-  purchase_date: z.string().optional(),
-  consultancy: z.string().nullable().optional(),
-  sale_price: z.preprocess(
-    (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
-    z.number().positive("Must be positive").optional()
-  ),
-  vehicle_cost: z.preprocess(
-    (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
-    z.number().positive("Must be positive").optional()
-  ),
 });
 
 const loanSchema = z.object({
-  loan_type: z.enum(["vehicle_sale", "external_purchase"]),
-  interest_split_method: z.enum(["equal", "rule_of_78", "reducing_balance"]).default("reducing_balance"),
+  interest_split_method: z.enum(["equal", "rule_of_78", "reducing_balance"]).default("rule_of_78"),
+  loan_source: z.string().nullable().optional(),
   principal_amount: z.coerce.number().positive("Must be positive"),
   interest_rate: z.coerce.number().positive("Must be positive"),
   tenure_months: z.coerce.number().int().positive("Must be positive"),
@@ -87,7 +76,7 @@ const ID_TYPE_LABELS: Record<string, string> = {
   voter_id: "Voter ID",
 };
 
-const STEPS = ["Customer", "Guarantor", "Vehicle", "Loan Details", "Review & Submit"];
+const STEPS = ["EMI Calculation", "Loan Details", "Customer", "Guarantor", "Vehicle", "Review & Submit"];
 
 function dedupePersons(list: Person[]): Person[] {
   return Array.from(new Map(list.map((p) => [p.id, p])).values());
@@ -132,7 +121,6 @@ function ExistingVehicleBanner({ vehicle, onClear }: { vehicle: Vehicle; onClear
           {vehicle.color ? ` · ${vehicle.color}` : ""}
         </p>
         <div className="flex items-center gap-1.5 pt-0.5">
-          {vehicle.vehicle_source && <StatusBadge status={vehicle.vehicle_source} />}
           {vehicle.current_status && <StatusBadge status={vehicle.current_status} />}
         </div>
       </div>
@@ -302,6 +290,7 @@ function PersonFields({
 export default function LoanForm() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [step, setStep] = useState(1);
 
   // Form data for new persons
@@ -349,39 +338,59 @@ export default function LoanForm() {
 
   const vehicleForm = useForm<VehicleValues>({
     resolver: zodResolver(vehicleSchema),
-    defaultValues: vehicleData ?? {
-      vehicle_source: "lender_stock",
-      purchase_date: new Date().toISOString().split("T")[0],
-    },
+    defaultValues: vehicleData ?? {},
   });
+
+  // Pre-fill loan fields when navigating from the EMI Calculator page
+  const calcPrincipal = searchParams.get("principal_amount");
+  const calcRate = searchParams.get("interest_rate");
+  const calcTenure = searchParams.get("tenure_months");
+  const calcSplitMethod = searchParams.get("interest_split_method");
+  const fromCalculator = !!(calcPrincipal || calcRate || calcTenure);
+
+  const derivedLoanType = "vehicle_sale";
+
+  // EMI from backend — seeded from URL params (EMI Calculator page) or step 1 inline calculator
+  const [calcEmiAmount, setCalcEmiAmount] = useState<string | null>(searchParams.get("emi_amount"));
+  // Snapshot of step 1 EMI calculator state — persisted so back-navigation restores values
+  const [emiCalcSnapshot, setEmiCalcSnapshot] = useState<EmiCalcSnapshot | undefined>(undefined);
 
   const loanForm = useForm<LoanValues>({
     resolver: zodResolver(loanSchema),
-    defaultValues: { loan_type: "vehicle_sale", interest_split_method: "reducing_balance", tenure_months: 12, interest_rate: 12 },
+    defaultValues: {
+      interest_split_method: (calcSplitMethod as LoanValues["interest_split_method"]) ?? "rule_of_78",
+      tenure_months: calcTenure ? Number(calcTenure) : 12,
+      interest_rate: calcRate ? Number(Number(calcRate).toFixed(6)) : 12,
+      principal_amount: calcPrincipal ? Number(Number(calcPrincipal).toFixed(2)) : undefined,
+    },
   });
 
   const s2 = loanForm.watch();
-  const emi = calculateEMI(Number(s2.principal_amount), Number(s2.interest_rate), Number(s2.tenure_months));
-  const reviewTotal = calculateTotalPayable(emi, Number(s2.tenure_months));
-  const reviewInterest = calculateTotalInterest(Number(s2.principal_amount), emi, Number(s2.tenure_months));
+  const reviewEmi = calculateEMI(Number(s2.principal_amount), Number(s2.interest_rate), Number(s2.tenure_months));
+  const reviewTotal = calculateTotalPayable(reviewEmi, Number(s2.tenure_months));
+  const reviewInterest = calculateTotalInterest(Number(s2.principal_amount), reviewEmi, Number(s2.tenure_months));
 
   // ── Submission ──────────────────────────────────────────────────────────────
 
   const mutation = useMutation({
     mutationFn: async (loan: LoanValues) => {
-      // 1. Customer — use existing or create new
-      const customerId = existingCustomer?.id
-        ?? (await createPerson({
-            full_name: customerData!.full_name,
-            phone: customerData!.phone,
-            alt_phone: customerData!.alt_phone || undefined,
-            address: customerData!.address || undefined,
-            city: customerData!.city || undefined,
-            state: customerData!.state || undefined,
-            pincode: customerData!.pincode || undefined,
-            id_type: customerData!.id_type,
-            id_number: customerData!.id_number,
-          })).id!;
+      // 1. Customer — use existing, create new, or leave unassigned (draft)
+      let customerId: string | null = null;
+      if (existingCustomer?.id) {
+        customerId = existingCustomer.id;
+      } else if (customerData) {
+        customerId = (await createPerson({
+          full_name: customerData.full_name,
+          phone: customerData.phone,
+          alt_phone: customerData.alt_phone || undefined,
+          address: customerData.address || undefined,
+          city: customerData.city || undefined,
+          state: customerData.state || undefined,
+          pincode: customerData.pincode || undefined,
+          id_type: customerData.id_type,
+          id_number: customerData.id_number,
+        })).id!;
+      }
 
       // 2. Guarantor — use existing, create new, or skip
       let guarantorId: string | null = null;
@@ -416,38 +425,24 @@ export default function LoanForm() {
           color: vd.color?.trim() || null,
           fuel_type: vd.fuel_type || undefined,
           vehicle_type: vd.vehicle_type || undefined,
-          vehicle_source: vd.vehicle_source ?? "lender_stock",
           chassis_no: vd.chassis_no?.trim() || null,
           engine_no: vd.engine_no?.trim() || null,
-          purchase_date: vd.purchase_date?.trim() || null,
-          consultancy: vd.consultancy || null,
-          sale_price: vd.sale_price ? String(Number(vd.sale_price).toFixed(2)) : null,
-          vehicle_cost: vd.vehicle_cost ? String(Number(vd.vehicle_cost).toFixed(2)) : undefined,
         });
-
-        if (vd.vehicle_cost && vehicle.id) {
-          await createCostIncurred({
-            vehicle_id: vehicle.id,
-            cost_type: "purchasing_cost",
-            cost: String(Number(vd.vehicle_cost).toFixed(2)),
-            service_date: vd.purchase_date || new Date().toISOString().split("T")[0],
-            description: "Vehicle purchase cost",
-          });
-        }
         vehicleId = vehicle.id!;
       }
 
-      // 4. Create loan
+      // 4. Create loan (customer_id may be null for draft — set later before activation)
       return createLoan({
         customer_id: customerId,
         vehicle_id: vehicleId,
         guarantor_id: guarantorId,
-        loan_type: loan.loan_type,
+        loan_source: loan.loan_source ?? null,
+        loan_type: derivedLoanType,
         interest_split_method: loan.interest_split_method,
         principal_amount: String(loan.principal_amount),
         interest_rate: String(loan.interest_rate),
         tenure_months: loan.tenure_months,
-        emi_amount: String(emi),
+        emi_amount: calcEmiAmount ?? String(reviewEmi),
         notes: loan.notes,
       });
     },
@@ -469,51 +464,44 @@ export default function LoanForm() {
 
   // ── Step nav helpers ────────────────────────────────────────────────────────
 
+  // Step 3 — Customer
   const handleCustomerNext = (data: PersonValues) => {
     setCustomerData(data);
-    setStep(2);
+    setStep(4);
   };
-
-  const handleStep1Next = () => {
-    if (existingCustomer) {
-      setStep(2);
-    } else {
-      customerForm.handleSubmit(handleCustomerNext)();
-    }
+  const handleStep3Next = () => {
+    if (existingCustomer) setStep(4);
+    else customerForm.handleSubmit(handleCustomerNext)();
   };
-
-  const handleGuarantorNext = (data: PersonValues) => {
-    setGuarantorData(data);
-    setStep(3);
-  };
-
-  const handleStep2Next = () => {
-    if (existingGuarantor) {
-      setStep(3);
-    } else {
-      guarantorForm.handleSubmit(handleGuarantorNext)();
-    }
-  };
-
-  const handleGuarantorSkip = () => {
-    setGuarantorData(undefined);
-    setExistingGuarantor(null);
-    setStep(3);
-  };
-
-  const handleVehicleNext = (data: VehicleValues) => {
-    setVehicleData(data);
-    const loanType = data.vehicle_source === "external_collateral" ? "external_purchase" : "vehicle_sale";
-    loanForm.setValue("loan_type", loanType);
+  const handleCustomerSkip = () => {
+    setCustomerData(null);
+    setExistingCustomer(null);
     setStep(4);
   };
 
+  // Step 4 — Guarantor
+  const handleGuarantorNext = (data: PersonValues) => {
+    setGuarantorData(data);
+    setStep(5);
+  };
+  const handleStep4Next = () => {
+    if (existingGuarantor) setStep(5);
+    else guarantorForm.handleSubmit(handleGuarantorNext)();
+  };
+  const handleGuarantorSkip = () => {
+    setGuarantorData(undefined);
+    setExistingGuarantor(null);
+    setStep(5);
+  };
+
+  // Step 5 — Vehicle
+  const handleVehicleNext = (data: VehicleValues) => {
+    setVehicleData(data);
+    setStep(6);
+  };
   const handleVehicleStepNext = () => {
     if (existingVehicle) {
-      // Auto-set loan type from existing vehicle's source
-      const loanType = existingVehicle.vehicle_source === "external_collateral" ? "external_purchase" : "vehicle_sale";
-      loanForm.setValue("loan_type", loanType);
-      setStep(4);
+      setStep(6);
     } else {
       vehicleForm.handleSubmit(handleVehicleNext)();
     }
@@ -548,10 +536,136 @@ export default function LoanForm() {
         <span className="ml-2 text-muted-foreground">{STEPS[step - 1]}</span>
       </div>
 
-      {/* ── Step 1: Customer ──────────────────────────────────────────────────── */}
+      {/* ── Step 1: EMI Calculation ───────────────────────────────────────────── */}
       {step === 1 && (
         <Card>
-          <CardHeader><CardTitle>Step 1 — Customer Information</CardTitle></CardHeader>
+          <CardHeader>
+            <CardTitle>Step 1 — EMI Calculation</CardTitle>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Calculate the monthly EMI before setting up loan details. You can skip this step if you already know the figures.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <EmiCalculator
+              snapshot={emiCalcSnapshot}
+              onSnapshot={setEmiCalcSnapshot}
+              applyLabel="Use this EMI & Continue to Loan Details →"
+              onApply={(result) => {
+                const rate = result.implied_annual_rate ?? result.annual_interest_rate;
+                if (result.principal_amount) loanForm.setValue("principal_amount", Number(result.principal_amount));
+                if (rate) loanForm.setValue("interest_rate", Number(Number(rate).toFixed(6)));
+                if (result.number_of_months) loanForm.setValue("tenure_months", result.number_of_months);
+                if (result.interest_split_method) loanForm.setValue("interest_split_method", result.interest_split_method);
+                if (result.emi) setCalcEmiAmount(result.emi);
+                setStep(2);
+              }}
+            />
+            <div className="flex justify-end">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setStep(2)}>
+                Skip EMI Calculation →
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Step 2: Loan Details ──────────────────────────────────────────────── */}
+      {step === 2 && (
+        <Card>
+          <CardHeader><CardTitle>Step 2 — Loan Details</CardTitle></CardHeader>
+          <CardContent>
+            {(fromCalculator || calcEmiAmount) && (
+              <div className="mb-4 rounded-md border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm text-primary">
+                Fields pre-filled from EMI Calculator.
+              </div>
+            )}
+            <form onSubmit={loanForm.handleSubmit(() => setStep(3))} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2 space-y-1">
+                  <Label>Amortization Method</Label>
+                  <Select
+                    value={s2.interest_split_method}
+                    onValueChange={(v) => loanForm.setValue("interest_split_method", v as LoanValues["interest_split_method"])}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="reducing_balance">Reducing Balance (Actuarial)</SelectItem>
+                      <SelectItem value="equal">Equal — Flat Rate</SelectItem>
+                      <SelectItem value="rule_of_78">Rule of 78 — Sum-of-Digits</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">Cannot be changed after the loan is activated.</p>
+                </div>
+
+                <div className="col-span-2 space-y-1">
+                  <Label>Loan Source</Label>
+                  <LookupSelectField
+                    listCode="loan_source"
+                    value={s2.loan_source ?? null}
+                    onChange={(v) => loanForm.setValue("loan_source", v)}
+                    placeholder="Select loan source…"
+                    allowNone
+                  />
+                  <p className="text-xs text-muted-foreground">Origination channel or referral source (optional).</p>
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Principal Amount (₹) *</Label>
+                  <Input type="number" {...loanForm.register("principal_amount")} />
+                  {loanForm.formState.errors.principal_amount && (
+                    <p className="text-xs text-destructive">{loanForm.formState.errors.principal_amount.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Interest Rate (% p.a.) *</Label>
+                  <Input type="number" step="0.000001" {...loanForm.register("interest_rate")} />
+                  {loanForm.formState.errors.interest_rate && (
+                    <p className="text-xs text-destructive">{loanForm.formState.errors.interest_rate.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Tenure (months) *</Label>
+                  <Input type="number" {...loanForm.register("tenure_months")} />
+                  {loanForm.formState.errors.tenure_months && (
+                    <p className="text-xs text-destructive">{loanForm.formState.errors.tenure_months.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Notes</Label>
+                  <Textarea {...loanForm.register("notes")} rows={2} />
+                </div>
+              </div>
+
+              {/* Estimated EMI — shown only when provided by EMI Calculator (step 1) */}
+              {calcEmiAmount && (
+                <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-3 text-sm">
+                  <span className="text-muted-foreground">Estimated EMI: </span>
+                  <span className="text-lg font-bold text-primary">{formatINR(Number(calcEmiAmount))}/month</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">From EMI Calculator</p>
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <Button type="button" variant="outline" onClick={() => setStep(1)}>← Back</Button>
+                <Button type="submit">Next →</Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Step 3: Customer ──────────────────────────────────────────────────── */}
+      {step === 3 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Step 3 — Customer Information</CardTitle>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Assign a customer now or skip and set them later from the loan detail page before activation.
+            </p>
+          </CardHeader>
           <CardContent className="space-y-4">
             {existingCustomer ? (
               <ExistingPersonBanner
@@ -567,16 +681,24 @@ export default function LoanForm() {
                 }}
               />
             )}
-            <Button onClick={handleStep1Next}>Next →</Button>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => setStep(2)}>← Back</Button>
+              <Button onClick={handleStep3Next}>Next →</Button>
+              {!existingCustomer && (
+                <Button type="button" variant="ghost" onClick={handleCustomerSkip}>
+                  Skip (Set Later)
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ── Step 2: Guarantor (optional) ──────────────────────────────────────── */}
-      {step === 2 && (
+      {/* ── Step 4: Guarantor (optional) ──────────────────────────────────────── */}
+      {step === 4 && (
         <Card>
           <CardHeader>
-            <CardTitle>Step 2 — Guarantor Information</CardTitle>
+            <CardTitle>Step 4 — Guarantor Information</CardTitle>
             <p className="text-sm text-muted-foreground mt-0.5">
               A guarantor is registered as a person record and linked to this loan.
               Skip if no guarantor is required.
@@ -598,8 +720,8 @@ export default function LoanForm() {
               />
             )}
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setStep(1)}>← Back</Button>
-              <Button onClick={handleStep2Next}>Save Guarantor & Next →</Button>
+              <Button type="button" variant="outline" onClick={() => setStep(3)}>← Back</Button>
+              <Button onClick={handleStep4Next}>Save Guarantor & Next →</Button>
               <Button type="button" variant="ghost" onClick={handleGuarantorSkip}>
                 Skip (No Guarantor)
               </Button>
@@ -608,10 +730,10 @@ export default function LoanForm() {
         </Card>
       )}
 
-      {/* ── Step 3: Vehicle ───────────────────────────────────────────────────── */}
-      {step === 3 && (
+      {/* ── Step 5: Vehicle ───────────────────────────────────────────────────── */}
+      {step === 5 && (
         <Card>
-          <CardHeader><CardTitle>Step 3 — Vehicle Information</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Step 5 — Vehicle Information</CardTitle></CardHeader>
           <CardContent>
             {existingVehicle ? (
               <div className="space-y-4">
@@ -620,7 +742,7 @@ export default function LoanForm() {
                   onClear={() => { setExistingVehicle(null); setRegNoSearch(""); setVehicleMatches([]); }}
                 />
                 <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => setStep(2)}>← Back</Button>
+                  <Button type="button" variant="outline" onClick={() => setStep(4)}>← Back</Button>
                   <Button onClick={handleVehicleStepNext}>Next →</Button>
                 </div>
               </div>
@@ -703,19 +825,6 @@ export default function LoanForm() {
                   </Select>
                 </div>
 
-                <div className="space-y-1">
-                  <Label>Vehicle Source</Label>
-                  <Select
-                    value={vehicleForm.watch("vehicle_source")}
-                    onValueChange={(v) => vehicleForm.setValue("vehicle_source", v as VehicleValues["vehicle_source"])}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="lender_stock">Lender Stock</SelectItem>
-                      <SelectItem value="external_collateral">External Collateral</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
 
                 <div className="space-y-1">
                   <Label>Chassis No</Label>
@@ -726,50 +835,11 @@ export default function LoanForm() {
                   <Label>Engine No</Label>
                   <Input {...vehicleForm.register("engine_no")} placeholder="Optional" />
                 </div>
-
-                <div className="space-y-1">
-                  <Label>Purchase Date</Label>
-                  <Input type="date" {...vehicleForm.register("purchase_date")} />
-                  <p className="text-xs text-muted-foreground">Date vehicle was acquired</p>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Vehicle Cost (₹)</Label>
-                  <Input type="number" step="0.01" {...vehicleForm.register("vehicle_cost")} placeholder="e.g. 350000" />
-                  {vehicleForm.formState.errors.vehicle_cost && (
-                    <p className="text-xs text-destructive">{vehicleForm.formState.errors.vehicle_cost.message}</p>
-                  )}
-                  <p className="text-xs text-muted-foreground">Auto-logged as purchasing cost</p>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Sale Price (₹)</Label>
-                  <Input type="number" step="0.01" {...vehicleForm.register("sale_price")} placeholder="e.g. 400000" />
-                  {vehicleForm.formState.errors.sale_price && (
-                    <p className="text-xs text-destructive">{vehicleForm.formState.errors.sale_price.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1 col-span-2">
-                  <Label>Consultancy Agency</Label>
-                  <LookupSelectField
-                    listCode="vehicle_consultancy"
-                    value={vehicleForm.watch("consultancy")}
-                    onChange={(v) => vehicleForm.setValue("consultancy", v)}
-                    placeholder="Select consultancy…"
-                    allowNone
-                  />
-                </div>
               </div>
 
-              {vehicleForm.watch("vehicle_source") === "external_collateral" && (
-                <div className="rounded-md bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-700">
-                  External collateral vehicle — loan type will be set to <strong>External Purchase</strong> automatically.
-                </div>
-              )}
 
               <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(2)}>← Back</Button>
+                <Button type="button" variant="outline" onClick={() => setStep(4)}>← Back</Button>
                 <Button type="submit">Next →</Button>
               </div>
             </form>
@@ -789,106 +859,29 @@ export default function LoanForm() {
         </Card>
       )}
 
-      {/* ── Step 4: Loan Details ──────────────────────────────────────────────── */}
-      {step === 4 && (
+      {/* ── Step 6: Review & Submit ───────────────────────────────────────────── */}
+      {step === 6 && (existingVehicle || vehicleData) && (
         <Card>
-          <CardHeader><CardTitle>Step 4 — Loan Details</CardTitle></CardHeader>
-          <CardContent>
-            <form onSubmit={loanForm.handleSubmit(() => setStep(5))} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2 space-y-1">
-                  <Label>Loan Type</Label>
-                  <Select
-                    value={s2.loan_type}
-                    onValueChange={(v) => loanForm.setValue("loan_type", v as LoanValues["loan_type"])}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="vehicle_sale">Vehicle Sale</SelectItem>
-                      <SelectItem value="external_purchase">External Purchase</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="col-span-2 space-y-1">
-                  <Label>Amortization Method</Label>
-                  <Select
-                    value={s2.interest_split_method}
-                    onValueChange={(v) => loanForm.setValue("interest_split_method", v as LoanValues["interest_split_method"])}
-                  >
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="reducing_balance">Reducing Balance (Actuarial)</SelectItem>
-                      <SelectItem value="equal">Equal — Flat Rate</SelectItem>
-                      <SelectItem value="rule_of_78">Rule of 78 — Sum-of-Digits</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs text-muted-foreground">Cannot be changed after the loan is activated.</p>
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Principal Amount (₹) *</Label>
-                  <Input type="number" {...loanForm.register("principal_amount")} />
-                  {loanForm.formState.errors.principal_amount && (
-                    <p className="text-xs text-destructive">{loanForm.formState.errors.principal_amount.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Interest Rate (% p.a.) *</Label>
-                  <Input type="number" step="0.01" {...loanForm.register("interest_rate")} />
-                  {loanForm.formState.errors.interest_rate && (
-                    <p className="text-xs text-destructive">{loanForm.formState.errors.interest_rate.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Tenure (months) *</Label>
-                  <Input type="number" {...loanForm.register("tenure_months")} />
-                  {loanForm.formState.errors.tenure_months && (
-                    <p className="text-xs text-destructive">{loanForm.formState.errors.tenure_months.message}</p>
-                  )}
-                </div>
-
-                <div className="space-y-1">
-                  <Label>Notes</Label>
-                  <Textarea {...loanForm.register("notes")} rows={2} />
-                </div>
-              </div>
-
-              {emi > 0 && (
-                <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-3 text-sm">
-                  <span className="text-muted-foreground">Estimated EMI: </span>
-                  <span className="text-lg font-bold text-primary">{formatINR(emi)}/month</span>
-                </div>
-              )}
-
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => setStep(3)}>← Back</Button>
-                <Button type="submit">Next →</Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Step 5: Review & Submit ───────────────────────────────────────────── */}
-      {step === 5 && reviewCustomer && (existingVehicle || vehicleData) && (
-        <Card>
-          <CardHeader><CardTitle>Step 5 — Review & Submit</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Step 6 — Review & Submit</CardTitle></CardHeader>
           <CardContent className="space-y-5">
 
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Customer</h3>
-              <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{reviewCustomer.full_name}</dd></div>
-                <div><dt className="text-muted-foreground">Phone</dt><dd>{reviewCustomer.phone}{reviewCustomer.alt_phone ? ` / ${reviewCustomer.alt_phone}` : ""}</dd></div>
-                <div><dt className="text-muted-foreground">ID</dt><dd>{ID_TYPE_LABELS[reviewCustomer.id_type ?? ""] ?? reviewCustomer.id_type} · {reviewCustomer.id_number}</dd></div>
-                {reviewCustomer.city && (
-                  <div><dt className="text-muted-foreground">City</dt><dd>{reviewCustomer.city}{reviewCustomer.state ? `, ${reviewCustomer.state}` : ""}</dd></div>
-                )}
-                {existingCustomer && <div className="col-span-2"><dd className="text-xs text-primary">Existing person record</dd></div>}
-              </dl>
+              {reviewCustomer ? (
+                <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div><dt className="text-muted-foreground">Name</dt><dd className="font-medium">{reviewCustomer.full_name}</dd></div>
+                  <div><dt className="text-muted-foreground">Phone</dt><dd>{reviewCustomer.phone}{reviewCustomer.alt_phone ? ` / ${reviewCustomer.alt_phone}` : ""}</dd></div>
+                  <div><dt className="text-muted-foreground">ID</dt><dd>{ID_TYPE_LABELS[reviewCustomer.id_type ?? ""] ?? reviewCustomer.id_type} · {reviewCustomer.id_number}</dd></div>
+                  {reviewCustomer.city && (
+                    <div><dt className="text-muted-foreground">City</dt><dd>{reviewCustomer.city}{reviewCustomer.state ? `, ${reviewCustomer.state}` : ""}</dd></div>
+                  )}
+                  {existingCustomer && <div className="col-span-2"><dd className="text-xs text-primary">Existing person record</dd></div>}
+                </dl>
+              ) : (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  No customer assigned — the loan will be saved as a draft. You must assign a customer before activating the loan.
+                </div>
+              )}
             </div>
 
             <hr />
@@ -919,9 +912,6 @@ export default function LoanForm() {
                   <div><dt className="text-muted-foreground">Reg No</dt><dd className="font-mono">{existingVehicle.registration_no}</dd></div>
                   <div><dt className="text-muted-foreground">Vehicle</dt><dd>{existingVehicle.make} {existingVehicle.model} ({existingVehicle.year})</dd></div>
                   {existingVehicle.color && <div><dt className="text-muted-foreground">Color</dt><dd>{existingVehicle.color}</dd></div>}
-                  {existingVehicle.vehicle_source && (
-                    <div><dt className="text-muted-foreground">Source</dt><dd><StatusBadge status={existingVehicle.vehicle_source} /></dd></div>
-                  )}
                   {existingVehicle.current_status && (
                     <div><dt className="text-muted-foreground">Status</dt><dd><StatusBadge status={existingVehicle.current_status} /></dd></div>
                   )}
@@ -932,15 +922,7 @@ export default function LoanForm() {
                   <div><dt className="text-muted-foreground">Reg No</dt><dd className="font-mono">{vehicleData.registration_no}</dd></div>
                   <div><dt className="text-muted-foreground">Vehicle</dt><dd>{vehicleData.make} {vehicleData.model} ({vehicleData.year})</dd></div>
                   {vehicleData.color && <div><dt className="text-muted-foreground">Color</dt><dd>{vehicleData.color}</dd></div>}
-                  {vehicleData.vehicle_source && (
-                    <div><dt className="text-muted-foreground">Source</dt><dd><StatusBadge status={vehicleData.vehicle_source} /></dd></div>
-                  )}
-                  {vehicleData.sale_price && (
-                    <div><dt className="text-muted-foreground">Sale Price</dt><dd><CurrencyDisplay value={vehicleData.sale_price} /></dd></div>
-                  )}
-                  {vehicleData.vehicle_cost && (
-                    <div><dt className="text-muted-foreground">Purchase Cost</dt><dd><CurrencyDisplay value={vehicleData.vehicle_cost} /></dd></div>
-                  )}
+                  {vehicleData.chassis_no && <div><dt className="text-muted-foreground">Chassis No</dt><dd className="font-mono">{vehicleData.chassis_no}</dd></div>}
                 </dl>
               )}
             </div>
@@ -950,12 +932,12 @@ export default function LoanForm() {
             <div>
               <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Loan</h3>
               <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-                <div><dt className="text-muted-foreground">Loan Type</dt><dd><StatusBadge status={s2.loan_type} /></dd></div>
-                <div><dt className="text-muted-foreground">Amortization</dt><dd className="capitalize">{(s2.interest_split_method ?? "reducing_balance").replace(/_/g, " ")}</dd></div>
+                {s2.loan_source && <div><dt className="text-muted-foreground">Loan Source</dt><dd>{s2.loan_source}</dd></div>}
+                <div><dt className="text-muted-foreground">Amortization</dt><dd className="capitalize">{(s2.interest_split_method ?? "rule_of_78").replace(/_/g, " ")}</dd></div>
                 <div><dt className="text-muted-foreground">Principal</dt><dd className="font-semibold"><CurrencyDisplay value={s2.principal_amount} /></dd></div>
                 <div><dt className="text-muted-foreground">Interest Rate</dt><dd>{s2.interest_rate}% p.a.</dd></div>
                 <div><dt className="text-muted-foreground">Tenure</dt><dd>{s2.tenure_months} months</dd></div>
-                <div><dt className="text-muted-foreground">EMI</dt><dd className="font-semibold"><CurrencyDisplay value={emi} /></dd></div>
+                <div><dt className="text-muted-foreground">EMI</dt><dd className="font-semibold"><CurrencyDisplay value={calcEmiAmount ?? reviewEmi} /></dd></div>
                 <div><dt className="text-muted-foreground">Total Payable</dt><dd><CurrencyDisplay value={reviewTotal} /></dd></div>
                 <div><dt className="text-muted-foreground">Total Interest</dt><dd><CurrencyDisplay value={reviewInterest} /></dd></div>
                 {s2.notes && <div className="col-span-2"><dt className="text-muted-foreground">Notes</dt><dd>{s2.notes}</dd></div>}
@@ -963,7 +945,7 @@ export default function LoanForm() {
             </div>
 
             <div className="flex gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setStep(4)}>← Back</Button>
+              <Button type="button" variant="outline" onClick={() => setStep(5)}>← Back</Button>
               <Button
                 onClick={() => loanForm.handleSubmit((d) => mutation.mutate(d))()}
                 disabled={mutation.isPending}
@@ -974,7 +956,7 @@ export default function LoanForm() {
 
             {mutation.isPending && (
               <p className="text-xs text-muted-foreground">
-                Creating {existingCustomer ? "" : "customer, "}{existingGuarantor ? "" : reviewGuarantor ? "guarantor, " : ""}vehicle and loan record…
+                Creating {(!existingCustomer && customerData) ? "customer, " : ""}{(!existingGuarantor && reviewGuarantor) ? "guarantor, " : ""}{!existingVehicle ? "vehicle and " : ""}loan record…
               </p>
             )}
           </CardContent>

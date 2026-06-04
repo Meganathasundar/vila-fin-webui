@@ -20,6 +20,7 @@ import VehicleNew from "@/pages/vehicles/VehicleNew";
 import LoanList from "@/pages/loans/LoanList";
 import LoanDetail from "@/pages/loans/LoanDetail";
 import LoanForm from "@/pages/loans/LoanForm";
+import EmiCalculator from "@/pages/loans/EmiCalculator";
 
 import CostIncurredList from "@/pages/costsIncurred/CostIncurredList";
 import CostIncurredForm from "@/pages/costsIncurred/CostIncurredForm";
@@ -73,6 +74,13 @@ export default function App() {
                 <Route path="new" element={<LoanForm />} handle={{ breadcrumb: "New" }} />
                 <Route path=":id" element={<LoanDetail />} handle={{ breadcrumb: "Detail" }} />
               </Route>
+
+              {/* EMI Calculator */}
+              <Route
+                path="/emi-calculator"
+                element={<EmiCalculator />}
+                handle={{ breadcrumb: "EMI Calculator" }}
+              />
 
               {/* Lookups */}
               <Route path="/lookups" element={<LookupManager />} handle={{ breadcrumb: "Lookups" }} />

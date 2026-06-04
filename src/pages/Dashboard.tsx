@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Car, FileText, AlertCircle, TrendingUp } from "lucide-react";
-import { listLoans } from "@/api/loans";
+import { listLoans, listOverdueInstallments } from "@/api/loans";
 import { listVehicles } from "@/api/vehicles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { DateDisplay } from "@/components/shared/DateDisplay";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import type { Loan } from "@/types/api";
+import type { Loan, OverdueInstallmentItem } from "@/types/api";
 
 function StatCard({
   title,
@@ -45,13 +45,18 @@ export default function Dashboard() {
   });
 
   const { data: recentLoans, isLoading: loadingRecent } = useQuery({
-    queryKey: ["loans", "recent"],
-    queryFn: () => listLoans({ limit: 10 }),
+    queryKey: ["loans", { status: "draft" }],
+    queryFn: () => listLoans({ status: "draft", limit: 10 }),
   });
 
   const { data: availableVehicles, isLoading: loadingVehicles } = useQuery({
     queryKey: ["vehicles", { current_status: "available" }],
     queryFn: () => listVehicles({ current_status: "available", limit: 100 }),
+  });
+
+  const { data: overdueData, isLoading: loadingOverdue } = useQuery({
+    queryKey: ["loans", "overdue"],
+    queryFn: () => listOverdueInstallments({ limit: 20 }),
   });
 
   const activeCount = activeLoans?.meta?.total ?? 0;
@@ -60,6 +65,7 @@ export default function Dashboard() {
     0
   );
   const vehicleCount = availableVehicles?.meta?.total ?? 0;
+  const overdueCount = overdueData?.meta?.total ?? 0;
 
   return (
     <div className="space-y-6">
@@ -80,8 +86,9 @@ export default function Dashboard() {
         />
         <StatCard
           title="Overdue Installments"
-          value="—"
+          value={overdueCount}
           icon={AlertCircle}
+          loading={loadingOverdue}
         />
         <StatCard
           title="Vehicles Available"
@@ -94,7 +101,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Recent Loans</CardTitle>
+            <CardTitle className="text-base">Draft Loans</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             {loadingRecent ? (
@@ -105,7 +112,7 @@ export default function Dashboard() {
               </div>
             ) : (recentLoans?.data ?? []).length === 0 ? (
               <p className="p-6 text-center text-sm text-muted-foreground">
-                No loans found. Create a loan to get started.
+                No draft loans.
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -148,10 +155,53 @@ export default function Dashboard() {
           <CardHeader>
             <CardTitle className="text-base">Overdue Installments</CardTitle>
           </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground text-center py-4">
-              Repayment schedule data not yet available from API.
-            </p>
+          <CardContent className="p-0">
+            {loadingOverdue ? (
+              <div className="p-4 space-y-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : (overdueData?.data ?? []).length === 0 ? (
+              <p className="p-6 text-center text-sm text-muted-foreground">
+                No overdue installments.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/30">
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Loan No</th>
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Seq</th>
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Due Date</th>
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Days Overdue</th>
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">EMI</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(overdueData?.data ?? []).map((item: OverdueInstallmentItem) => (
+                      <tr key={item.id} className="border-b hover:bg-muted/20">
+                        <td className="px-4 py-2">
+                          <Link to={`/loans/${item.loan_id}`} className="text-primary hover:underline font-mono text-xs">
+                            {item.loan_number ?? "—"}
+                          </Link>
+                        </td>
+                        <td className="px-4 py-2 text-muted-foreground">{item.seq}</td>
+                        <td className="px-4 py-2">
+                          <DateDisplay value={item.due_date} />
+                        </td>
+                        <td className="px-4 py-2">
+                          <span className="text-destructive font-medium">{item.days_overdue}d</span>
+                        </td>
+                        <td className="px-4 py-2">
+                          <CurrencyDisplay value={item.emi} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

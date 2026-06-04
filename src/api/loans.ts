@@ -2,6 +2,8 @@ import { apiClient } from "./client";
 import type {
   Loan, LoanCreate, LoanUpdate, LoanList,
   ScheduleResponse, ScheduleItem, UpdateInstallmentRequest,
+  EMICalculateRequest, EMICalculateResponse,
+  OverdueListResponse,
 } from "@/types/api";
 
 interface ListParams {
@@ -12,6 +14,7 @@ interface ListParams {
   loan_number?: string;
   customer_id?: string;
   guarantor_id?: string;
+  vehicle_id?: string;
 }
 
 export async function listLoans(params: ListParams = {}): Promise<LoanList> {
@@ -48,6 +51,16 @@ export async function updateInstallment(
     `/loans/${loanId}/schedule/${installmentId}`,
     data,
   );
+  return res.data;
+}
+
+export async function listOverdueInstallments(params: { limit?: number; offset?: number } = {}): Promise<OverdueListResponse> {
+  const res = await apiClient.get<OverdueListResponse>("/loans/installments/overdue", { params });
+  return res.data;
+}
+
+export async function calculateEmi(data: EMICalculateRequest): Promise<EMICalculateResponse> {
+  const res = await apiClient.post<EMICalculateResponse>("/loans/calculate-emi", data);
   return res.data;
 }
 

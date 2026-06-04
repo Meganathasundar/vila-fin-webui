@@ -89,7 +89,6 @@ export interface VehicleCreate {
   vehicle_type?: "two_wheeler" | "four_wheeler" | "commercial" | null;
   chassis_no?: string | null;
   engine_no?: string | null;
-  vehicle_source?: "lender_stock" | "external_collateral";
   current_owner_id?: string | null;
 }
 
@@ -114,8 +113,9 @@ export interface VehiclePurchaseCreate {
   purchase_date?: string | null;
   /** Lookup code from vehicle_consultancy list */
   consultancy?: string | null;
-  sale_price?: string | null;
+  asking_price?: string | null;
   final_price?: string | null;
+  sale_date?: string | null;
 }
 
 export interface VehiclePurchase extends VehiclePurchaseCreate {
@@ -128,10 +128,40 @@ export interface VehiclePurchase extends VehiclePurchaseCreate {
 
 export type InterestSplitMethod = "equal" | "rule_of_78" | "reducing_balance";
 
+// ── EMI Calculator ────────────────────────────────────────────────────────────
+
+export interface EMICalculateRequest {
+  vehicle_value: string;
+  document_charge_pct: string;
+  monthly_interest_rate: string;
+  number_of_months: number;
+  interest_split_method?: InterestSplitMethod;
+  first_due_date?: string | null;
+  /** Optional — when provided, back-calculates the implied interest rate */
+  desired_emi?: string;
+}
+
+export interface EMICalculateResponse {
+  vehicle_value?: string;
+  document_charge?: string;
+  principal_amount?: string;
+  annual_interest_rate?: string;
+  emi?: string;
+  total_interest?: string;
+  total_payable?: string;
+  number_of_months?: number;
+  interest_split_method?: InterestSplitMethod;
+  /** Only present when desired_emi was sent */
+  implied_monthly_rate?: string;
+  /** Only present when desired_emi was sent */
+  implied_annual_rate?: string;
+}
+
 export interface LoanCreate {
-  customer_id: string;
+  customer_id: string | null;
   vehicle_id: string;
   guarantor_id?: string | null;
+  loan_source?: string | null;
   loan_type?: "vehicle_sale" | "external_purchase";
   principal_amount: string;
   interest_rate: string;
@@ -142,6 +172,8 @@ export interface LoanCreate {
 }
 
 export interface LoanUpdate {
+  customer_id?: string | null;
+  loan_source?: string | null;
   loan_type: "vehicle_sale" | "external_purchase";
   principal_amount: string;
   interest_rate: string;
@@ -207,6 +239,27 @@ export interface UpdateInstallmentRequest {
   status: "paid" | "waived";
   paid_amount?: string;
   paid_date?: string;
+}
+
+// ── Overdue Installments ──────────────────────────────────────────────────────
+
+export interface OverdueInstallmentItem {
+  id?: string;
+  loan_id?: string;
+  loan_number?: string;
+  seq?: number;
+  due_date?: string;
+  days_overdue?: number;
+  emi?: string;
+  principal?: string;
+  interest?: string;
+  balance?: string;
+  status?: "pending" | "overdue";
+}
+
+export interface OverdueListResponse {
+  data?: OverdueInstallmentItem[];
+  meta?: ListMeta;
 }
 
 // ── Lookups ──────────────────────────────────────────────────────────────────

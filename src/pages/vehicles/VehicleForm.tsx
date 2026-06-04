@@ -23,7 +23,6 @@ const vehicleSchema = z.object({
   vehicle_type: z.enum(["two_wheeler", "four_wheeler", "commercial"]).optional(),
   chassis_no: z.string().optional(),
   engine_no: z.string().optional(),
-  vehicle_source: z.enum(["lender_stock", "external_collateral"]).optional(),
 });
 
 // Purchase fields only used on create
@@ -34,7 +33,7 @@ const createSchema = vehicleSchema.extend({
   ),
   purchase_date: z.string().optional(),
   consultancy: z.string().nullable().optional(),
-  sale_price: z.preprocess(
+  asking_price: z.preprocess(
     (v) => (v === "" || v === null || v === undefined ? undefined : Number(v)),
     z.number().positive("Must be a positive amount").optional()
   ),
@@ -71,10 +70,9 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
           vehicle_type: vehicle.vehicle_type ?? undefined,
           chassis_no: vehicle.chassis_no ?? undefined,
           engine_no: vehicle.engine_no ?? undefined,
-          vehicle_source: vehicle.vehicle_source,
+
         }
       : {
-          vehicle_source: "lender_stock",
           purchase_date: new Date().toISOString().split("T")[0],
         },
   });
@@ -91,7 +89,7 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
         engine_no: data.engine_no?.trim() || null,
         fuel_type: data.fuel_type,
         vehicle_type: data.vehicle_type,
-        vehicle_source: data.vehicle_source,
+
       };
 
       if (isEdit && vehicle.id) {
@@ -104,13 +102,13 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
       const saved = await createVehicle(vehiclePayload);
 
       // Post purchase sub-resource if any purchase data provided
-      const hasPurchaseData = data.vehicle_cost || data.purchase_date || data.consultancy || data.sale_price || data.final_price;
+      const hasPurchaseData = data.vehicle_cost || data.purchase_date || data.consultancy || data.asking_price || data.final_price;
       if (saved.id && hasPurchaseData) {
         await createVehiclePurchase(saved.id, {
           vehicle_cost: data.vehicle_cost ? String(Number(data.vehicle_cost).toFixed(2)) : null,
           purchase_date: data.purchase_date?.trim() || null,
           consultancy: data.consultancy || null,
-          sale_price: data.sale_price ? String(Number(data.sale_price).toFixed(2)) : null,
+          asking_price: data.asking_price ? String(Number(data.asking_price).toFixed(2)) : null,
           final_price: data.final_price ? String(Number(data.final_price).toFixed(2)) : null,
         });
       }
@@ -193,18 +191,6 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
             </SelectContent>
           </Select>
         </div>
-        {!isEdit && (
-          <div className="space-y-1">
-            <Label>Vehicle Source</Label>
-            <Select value={watch("vehicle_source")} onValueChange={(v) => setValue("vehicle_source", v as CreateFormValues["vehicle_source"])}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="lender_stock">Lender Stock</SelectItem>
-                <SelectItem value="external_collateral">External Collateral</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
         <div className="space-y-1">
           <Label>Chassis No</Label>
           <Input {...register("chassis_no")} />
@@ -247,10 +233,10 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
               <p className="text-xs text-muted-foreground">Auto-logged as purchasing cost</p>
             </div>
             <div className="space-y-1">
-              <Label>Sale Price (₹)</Label>
-              <Input {...register("sale_price")} type="number" step="0.01" placeholder="e.g. 380000.00" />
-              {errors.sale_price && <p className="text-xs text-destructive">{errors.sale_price.message}</p>}
-              <p className="text-xs text-muted-foreground">Listed sale price to the customer</p>
+              <Label>Asking Price (₹)</Label>
+              <Input {...register("asking_price")} type="number" step="0.01" placeholder="e.g. 380000.00" />
+              {errors.asking_price && <p className="text-xs text-destructive">{errors.asking_price.message}</p>}
+              <p className="text-xs text-muted-foreground">Listed asking price to the customer</p>
             </div>
             <div className="space-y-1">
               <Label>Final Price (₹)</Label>

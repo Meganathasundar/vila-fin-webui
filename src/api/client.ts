@@ -24,16 +24,16 @@ export function getAccessToken(): string | null {
   return accessToken;
 }
 
-// ── Refresh token (sessionStorage — persists across page reloads in same tab) ──
+// ── Refresh token (localStorage — shared across all tabs of the same origin) ──
 const REFRESH_KEY = "vf_rt";
 
 export function setRefreshToken(token: string | null) {
-  if (token) sessionStorage.setItem(REFRESH_KEY, token);
-  else sessionStorage.removeItem(REFRESH_KEY);
+  if (token) localStorage.setItem(REFRESH_KEY, token);
+  else localStorage.removeItem(REFRESH_KEY);
 }
 
 export function getRefreshToken(): string | null {
-  return sessionStorage.getItem(REFRESH_KEY);
+  return localStorage.getItem(REFRESH_KEY);
 }
 
 // ── Refresh queue ──────────────────────────────────────────────────────────

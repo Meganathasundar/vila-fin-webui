@@ -32,7 +32,7 @@ const COL_OPTIONS: ColOption[] = [
   { id: "vehicle_type", label: "Vehicle Type" },
   { id: "chassis_no", label: "Chassis No" },
   { id: "engine_no", label: "Engine No" },
-  { id: "vehicle_source", label: "Source" },
+
   { id: "current_status", label: "Status", always: true },
 ];
 
@@ -42,7 +42,7 @@ export default function VehicleList() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("available"); // default: available vehicles only
-  const [sourceFilter, setSourceFilter] = useState("all");
+
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: PAGE_SIZE });
   const [visibleCols, setVisibleCols] = useState<Set<string>>(DEFAULT_VISIBLE);
   const [colPickerOpen, setColPickerOpen] = useState(false);
@@ -70,12 +70,11 @@ export default function VehicleList() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ["vehicles", { search: debouncedSearch, statusFilter, sourceFilter, pagination }],
+    queryKey: ["vehicles", { search: debouncedSearch, statusFilter, pagination }],
     queryFn: () =>
       listVehicles({
         registration_no: debouncedSearch || undefined,
         current_status: statusFilter === "all" ? undefined : statusFilter,
-        vehicle_source: sourceFilter === "all" ? undefined : sourceFilter,
         limit: PAGE_SIZE,
         offset: pagination.pageIndex * PAGE_SIZE,
       }),
@@ -111,12 +110,7 @@ export default function VehicleList() {
         <span className="capitalize">{((getValue() as string) ?? "—").replace(/_/g, " ")}</span>
       ),
     },
-    {
-      id: "vehicle_source",
-      header: "Source",
-      accessorKey: "vehicle_source",
-      cell: ({ getValue }) => <StatusBadge status={String(getValue())} />,
-    },
+
     {
       id: "current_status",
       header: "Status",
@@ -167,14 +161,6 @@ export default function VehicleList() {
             <SelectItem value="available">Available</SelectItem>
             <SelectItem value="loan_active">Loan Active</SelectItem>
             <SelectItem value="sold">Sold</SelectItem>
-          </SelectContent>
-        </Select>
-        <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPagination((p) => ({ ...p, pageIndex: 0 })); }}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Source" /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Sources</SelectItem>
-            <SelectItem value="lender_stock">Lender Stock</SelectItem>
-            <SelectItem value="external_collateral">External Collateral</SelectItem>
           </SelectContent>
         </Select>
 

@@ -56,6 +56,11 @@ export async function updateLookupValue(
   return res.data;
 }
 
+/** DELETE /api/v1/lookups/{code}/values/{valueCode} */
+export async function deleteLookupValue(listCode: string, valueCode: string): Promise<void> {
+  await apiClient.delete(`/lookups/${listCode}/values/${valueCode}`);
+}
+
 /** Convenience: fetch active values for the "garage" lookup list */
 export async function listGarages(): Promise<ListValuesResponse["data"]> {
   const res = await getLookupList("garage");

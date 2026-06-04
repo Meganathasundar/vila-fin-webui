@@ -1,29 +1,39 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { toast } from "sonner";
+import { Pencil, Lock } from "lucide-react";
 import {
   getLoan, updateLoan, closeLoan, defaultLoan, cancelLoan,
   getLoanSchedule, updateInstallment,
 } from "@/api/loans";
-import { getPerson } from "@/api/persons";
+import { getPerson, listPersons } from "@/api/persons";
 import { getVehicle } from "@/api/vehicles";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { DateDisplay } from "@/components/shared/DateDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { LookupSelectField } from "@/components/shared/LookupSelectField";
+import { PersonMatchDialog } from "@/components/shared/PersonMatchDialog";
+import { EmiCalculator } from "@/components/shared/EmiCalculator";
+import { useLookups } from "@/context/LookupContext";
 import { usePermission } from "@/hooks/usePermission";
 import { calculateEMI, calculateTotalPayable, calculateTotalInterest } from "@/utils/emi";
-import type { ScheduleItem, UpdateInstallmentRequest } from "@/types/api";
+import type { Loan, Person, ScheduleItem, UpdateInstallmentRequest } from "@/types/api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +70,335 @@ const SPLIT_METHOD_LABELS: Record<string, string> = {
 };
 
 const INSTALLMENT_STATUS_TERMINAL = new Set(["paid", "waived"]);
+
+// ── Edit Loan Dialog ───────────────────────────────────────────────────────────
+
+const editLoanSchema = z.object({
+  customer_id: z.string().nullable().optional(),
+  loan_source: z.string().nullable().optional(),
+  loan_type: z.enum(["vehicle_sale", "external_purchase"]),
+  principal_amount: z.coerce.number().positive("Must be positive"),
+  interest_rate: z.coerce.number().positive("Must be positive"),
+  tenure_months: z.coerce.number().int().positive("Must be positive"),
+  emi_amount: z.coerce.number().positive("Must be positive"),
+  interest_split_method: z.enum(["equal", "rule_of_78", "reducing_balance"]),
+  disbursement_date: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+});
+type EditLoanForm = z.infer<typeof editLoanSchema>;
+
+function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const isActive = loan.status === "active";
+
+  const [showEmiCalc, setShowEmiCalc] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Person | null>(null);
+  const [customerSearch, setCustomerSearch] = useState("");
+  const [customerMatches, setCustomerMatches] = useState<Person[]>([]);
+
+  const { data: customerSearchData } = useQuery({
+    queryKey: ["persons-lookup", "phone", customerSearch],
+    queryFn: () => listPersons({ phone: customerSearch, limit: 5 }),
+    enabled: customerSearch.length >= 6,
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    const persons = customerSearchData?.data ?? [];
+    if (persons.length > 0) setCustomerMatches((prev) => {
+      const map = new Map([...prev, ...persons].map((p) => [p.id, p]));
+      return Array.from(map.values());
+    });
+  }, [customerSearchData]);
+
+  const { register, handleSubmit, setValue, watch, formState: { errors } } = useForm<EditLoanForm>({
+    resolver: zodResolver(editLoanSchema),
+    defaultValues: {
+      customer_id: loan.customer_id ?? null,
+      loan_source: loan.loan_source ?? null,
+      loan_type: loan.loan_type ?? "vehicle_sale",
+      principal_amount: parseFloat(loan.principal_amount ?? "0"),
+      interest_rate: parseFloat(loan.interest_rate ?? "0"),
+      tenure_months: loan.tenure_months ?? 12,
+      emi_amount: parseFloat(loan.emi_amount ?? "0"),
+      interest_split_method: loan.interest_split_method ?? "rule_of_78",
+      disbursement_date: loan.disbursement_date ?? null,
+      notes: loan.notes ?? null,
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (data: EditLoanForm) =>
+      updateLoan(loan.id!, {
+        customer_id: data.customer_id ?? null,
+        status: loan.status!,
+        guarantor_id: loan.guarantor_id ?? null,
+        loan_source: data.loan_source ?? null,
+        loan_type: data.loan_type,
+        principal_amount: String(Number(data.principal_amount).toFixed(2)),
+        interest_rate: String(Number(data.interest_rate).toFixed(6)),
+        tenure_months: data.tenure_months,
+        emi_amount: String(Number(data.emi_amount).toFixed(2)),
+        interest_split_method: data.interest_split_method,
+        disbursement_date: data.disbursement_date ?? undefined,
+        maturity_date: loan.maturity_date ?? undefined,
+        notes: data.notes ?? null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["loans", loan.id] });
+      queryClient.invalidateQueries({ queryKey: ["loans"] });
+      toast.success("Loan updated");
+      onClose();
+    },
+    onError: (err: { response?: { status?: number; data?: { error?: { message?: string } } } }) => {
+      if (err?.response?.status === 409) {
+        toast.error(err.response?.data?.error?.message ?? "Cannot modify locked fields on an active loan.");
+      } else {
+        toast.error(err?.response?.data?.error?.message ?? "Failed to update loan.");
+      }
+    },
+  });
+
+  // Helper: locked field shows a lock badge in its label
+  const LockedBadge = () => (
+    <span className="ml-1.5 inline-flex items-center gap-0.5 text-[10px] text-amber-600 bg-amber-50 border border-amber-200 px-1 py-0.5 rounded">
+      <Lock className="h-2.5 w-2.5" /> Locked
+    </span>
+  );
+
+  return (
+    <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-4">
+      {isActive && (
+        <div className="rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-700">
+          This loan is <strong>active</strong>. Schedule-affecting fields are locked and cannot be changed.
+        </div>
+      )}
+
+      {!isActive && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted-foreground">Recalculate EMI to update principal, rate, tenure and method.</p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs shrink-0"
+              onClick={() => setShowEmiCalc((v) => !v)}
+            >
+              {showEmiCalc ? "Hide Calculator" : "EMI Calculator"}
+            </Button>
+          </div>
+          {showEmiCalc && (
+            <EmiCalculator
+              applyLabel="Apply to loan fields ↓"
+              onApply={(result) => {
+                const rate = result.implied_annual_rate ?? result.annual_interest_rate;
+                if (result.principal_amount) setValue("principal_amount", Number(result.principal_amount));
+                if (rate) setValue("interest_rate", Number(Number(rate).toFixed(6)));
+                if (result.number_of_months) setValue("tenure_months", result.number_of_months);
+                if (result.interest_split_method) setValue("interest_split_method", result.interest_split_method);
+                if (result.emi) setValue("emi_amount", Number(result.emi));
+                setShowEmiCalc(false);
+              }}
+              onClose={() => setShowEmiCalc(false)}
+            />
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        {/* Customer — editable only on draft loans */}
+        {!isActive && (
+          <div className="space-y-2 col-span-2 pb-2 border-b">
+            <Label className="font-semibold">Customer</Label>
+            {selectedCustomer ? (
+              <div className="rounded-md border border-primary/30 bg-primary/5 p-3 flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="font-medium text-sm">{selectedCustomer.full_name}</p>
+                  <p className="text-xs text-muted-foreground">{selectedCustomer.phone}</p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedCustomer(null);
+                    setValue("customer_id", loan.customer_id ?? null);
+                  }}
+                >
+                  Change
+                </Button>
+              </div>
+            ) : watch("customer_id") ? (
+              <div className="rounded-md border bg-muted/30 p-3 flex items-center justify-between gap-4">
+                <p className="text-sm text-muted-foreground">Customer ID: <span className="font-mono text-xs">{watch("customer_id")}</span></p>
+                <Button type="button" size="sm" variant="outline" onClick={() => setValue("customer_id", null)}>
+                  Clear
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                No customer assigned. Search by phone to assign one.
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Search by phone (6+ digits)…"
+                className="h-8 text-sm"
+                value={customerSearch}
+                onChange={(e) => setCustomerSearch(e.target.value)}
+              />
+            </div>
+            <PersonMatchDialog
+              open={customerMatches.length > 0}
+              persons={customerMatches}
+              onSelect={(p) => {
+                setSelectedCustomer(p);
+                setValue("customer_id", p.id!);
+                setCustomerMatches([]);
+                setCustomerSearch("");
+              }}
+              onDismiss={() => { setCustomerMatches([]); setCustomerSearch(""); }}
+            />
+          </div>
+        )}
+
+        {/* Always editable */}
+        <div className="space-y-1 col-span-2">
+          <Label>Loan Source</Label>
+          <LookupSelectField
+            listCode="loan_source"
+            value={watch("loan_source") ?? null}
+            onChange={(v) => setValue("loan_source", v)}
+            placeholder="Select loan source…"
+            allowNone
+          />
+        </div>
+
+        <div className="space-y-1 col-span-2">
+          <Label>Loan Type</Label>
+          <Select
+            value={watch("loan_type")}
+            onValueChange={(v) => setValue("loan_type", v as EditLoanForm["loan_type"])}
+          >
+            <SelectTrigger><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="vehicle_sale">Vehicle Sale</SelectItem>
+              <SelectItem value="external_purchase">External Purchase</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Locked when active */}
+        <div className="space-y-1">
+          <Label>
+            Principal Amount (₹)
+            {isActive && <LockedBadge />}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            {...register("principal_amount")}
+            disabled={isActive}
+            className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+          />
+          {errors.principal_amount && <p className="text-xs text-destructive">{errors.principal_amount.message}</p>}
+        </div>
+
+        <div className="space-y-1">
+          <Label>
+            Interest Rate (% p.a.)
+            {isActive && <LockedBadge />}
+          </Label>
+          <Input
+            type="number"
+            step="0.000001"
+            {...register("interest_rate")}
+            disabled={isActive}
+            className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+          />
+          {errors.interest_rate && <p className="text-xs text-destructive">{errors.interest_rate.message}</p>}
+        </div>
+
+        <div className="space-y-1">
+          <Label>
+            Tenure (months)
+            {isActive && <LockedBadge />}
+          </Label>
+          <Input
+            type="number"
+            {...register("tenure_months")}
+            disabled={isActive}
+            className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+          />
+          {errors.tenure_months && <p className="text-xs text-destructive">{errors.tenure_months.message}</p>}
+        </div>
+
+        <div className="space-y-1">
+          <Label>
+            EMI Amount (₹)
+            {isActive && <LockedBadge />}
+          </Label>
+          <Input
+            type="number"
+            step="0.01"
+            {...register("emi_amount")}
+            disabled={isActive}
+            className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+          />
+          {errors.emi_amount && <p className="text-xs text-destructive">{errors.emi_amount.message}</p>}
+        </div>
+
+        <div className="space-y-1 col-span-2">
+          <Label>
+            Amortization Method
+            {isActive && <LockedBadge />}
+          </Label>
+          <Select
+            value={watch("interest_split_method")}
+            onValueChange={(v) => setValue("interest_split_method", v as EditLoanForm["interest_split_method"])}
+            disabled={isActive}
+          >
+            <SelectTrigger className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="reducing_balance">Reducing Balance (Actuarial)</SelectItem>
+              <SelectItem value="equal">Equal — Flat Rate</SelectItem>
+              <SelectItem value="rule_of_78">Rule of 78 — Sum-of-Digits</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1 col-span-2">
+          <Label>
+            Disbursement Date
+            {isActive && <LockedBadge />}
+          </Label>
+          <Input
+            type="date"
+            {...register("disbursement_date")}
+            disabled={isActive}
+            className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
+          />
+        </div>
+
+        {/* Always editable */}
+        <div className="space-y-1 col-span-2">
+          <Label>Notes</Label>
+          <Textarea {...register("notes")} rows={2} placeholder="Optional notes…" />
+        </div>
+      </div>
+
+      <DialogFooter>
+        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="submit" disabled={mutation.isPending}>
+          {mutation.isPending ? "Saving…" : "Save Changes"}
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
@@ -105,11 +444,17 @@ function ScheduleSummaryGrid({ summary }: { summary: NonNullable<ReturnType<type
 
 export default function LoanDetail() {
   const { id } = useParams<{ id: string }>();
+
   const queryClient = useQueryClient();
   const [loanDialog, setLoanDialog] = useState<LoanDialogType>(null);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const { getLookupLabel } = useLookups();
   const canActivate = usePermission("activate_loan");
   const canClose = usePermission("close_loan");
   const canCancel = usePermission("cancel_loan");
+  const canEdit = usePermission("edit_vehicle"); // admin + manager
+
 
   // ── Activate dialog state (collects disbursement_date before PUT) ───────────
   const [activateOpen, setActivateOpen] = useState(false);
@@ -277,6 +622,14 @@ export default function LoanDetail() {
         {loan.status === "draft" && canCancel && (
           <Button size="sm" variant="outline" onClick={() => setLoanDialog("cancel")}>Cancel Loan</Button>
         )}
+        {/* Edit button — available for draft and active loans */}
+        {(loan.status === "draft" || loan.status === "active") && canEdit && (
+          <Button size="sm" variant="outline" className="ml-auto gap-1.5" onClick={() => setEditOpen(true)}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit Loan
+          </Button>
+        )}
+
       </div>
 
       {/* Loan summary */}
@@ -284,7 +637,7 @@ export default function LoanDetail() {
         <CardHeader><CardTitle>Loan Summary</CardTitle></CardHeader>
         <CardContent>
           <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm">
-            <div><dt className="text-muted-foreground">Loan Type</dt><dd><StatusBadge status={loan.loan_type} /></dd></div>
+            {loan.loan_source && <div><dt className="text-muted-foreground">Loan Source</dt><dd>{getLookupLabel("loan_source", loan.loan_source) || loan.loan_source}</dd></div>}
             <div><dt className="text-muted-foreground">Amortization</dt><dd>{SPLIT_METHOD_LABELS[loan.interest_split_method ?? ""] ?? "—"}</dd></div>
             <div><dt className="text-muted-foreground">Principal</dt><dd className="font-semibold"><CurrencyDisplay value={loan.principal_amount} /></dd></div>
             <div><dt className="text-muted-foreground">Interest Rate</dt><dd>{loan.interest_rate}% p.a.</dd></div>
@@ -298,6 +651,18 @@ export default function LoanDetail() {
           </dl>
         </CardContent>
       </Card>
+
+      {/* No-customer warning for draft loans */}
+      {loan.status === "draft" && !loan.customer_id && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 flex items-center justify-between gap-4">
+          <span>No customer assigned. Assign a customer before activating this loan.</span>
+          {canEdit && (
+            <Button size="sm" variant="outline" className="shrink-0" onClick={() => setEditOpen(true)}>
+              Assign Customer
+            </Button>
+          )}
+        </div>
+      )}
 
       {/* Linked persons */}
       {(customer || guarantor) && (
@@ -350,7 +715,6 @@ export default function LoanDetail() {
                 <p className="text-sm text-muted-foreground">{vehicle.make} {vehicle.model} · {vehicle.year}</p>
               </div>
               <div className="flex items-center gap-2">
-                <StatusBadge status={vehicle.vehicle_source ?? "lender_stock"} />
                 <Link to={`/vehicles/${vehicle.id}`}>
                   <Button size="sm" variant="outline">View</Button>
                 </Link>
@@ -578,6 +942,21 @@ export default function LoanDetail() {
           loading={loanMutation.isPending}
         />
       )}
+
+      {/* ── Edit Loan dialog ────────────────────────────────────────────────── */}
+      <Dialog open={editOpen} onOpenChange={(o) => !o && setEditOpen(false)}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Edit Loan — {loan.loan_number}
+              {loan.status === "active" && (
+                <span className="ml-2 text-xs font-normal text-amber-600">(some fields locked)</span>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <EditLoanDialog key={loan.updated_at} loan={loan} onClose={() => setEditOpen(false)} />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -12,6 +12,7 @@ import { CurrencyDisplay } from "@/components/shared/CurrencyDisplay";
 import { DateDisplay } from "@/components/shared/DateDisplay";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useLookups } from "@/context/LookupContext";
 import { cn } from "@/lib/utils";
 import type { Loan } from "@/types/api";
 import type { ColumnDef, PaginationState } from "@tanstack/react-table";
@@ -75,6 +76,7 @@ function OverviewCard({
 
 export default function LoanList() {
   const navigate = useNavigate();
+  const { getLookupLabel } = useLookups();
   const [search, setSearch] = useState("");
   // Default: active loans only
   const [statusFilter, setStatusFilter] = useState("active");
@@ -109,7 +111,7 @@ export default function LoanList() {
         </Link>
       ),
     },
-    { header: "Loan Type", accessorKey: "loan_type", cell: ({ getValue }) => <StatusBadge status={String(getValue())} /> },
+    { header: "Loan Source", accessorKey: "loan_source", cell: ({ getValue }) => { const v = getValue(); if (!v) return <span className="text-muted-foreground text-sm">—</span>; const label = getLookupLabel("loan_source", String(v)); return <span className="text-sm">{label || String(v)}</span>; } },
     { header: "Principal", accessorKey: "principal_amount", cell: ({ getValue }) => <CurrencyDisplay value={String(getValue())} /> },
     { header: "EMI", accessorKey: "emi_amount", cell: ({ getValue }) => <CurrencyDisplay value={String(getValue())} /> },
     { header: "Status", accessorKey: "status", cell: ({ getValue }) => <StatusBadge status={String(getValue())} /> },
