@@ -44,7 +44,6 @@ const createSchema = vehicleSchema.extend({
 });
 
 type CreateFormValues = z.infer<typeof createSchema>;
-type EditFormValues = z.infer<typeof vehicleSchema>;
 
 interface VehicleFormProps {
   vehicle?: Vehicle;

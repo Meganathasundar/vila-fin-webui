@@ -158,15 +158,30 @@ The app will be available at `http://localhost:5173`.
 | Variable | Description | Example |
 |---|---|---|
 | `VITE_API_BASE_URL` | Base URL of the Vila Fin API | `http://localhost:8080/api/v1` |
+| `WEBUI_PORT` | Host port when running via Docker (default: `5173`) | `8080` |
 
-Create `.env.local` at the project root for local development. This file is gitignored.
+Vite loads env files based on the run mode, merged in this order (later files take precedence):
+
+| File | Loaded when |
+|---|---|
+| `.env` | Always |
+| `.env.development` | `npm run dev` (default mode) |
+| `.env.staging` | `npm run dev -- --mode staging` |
+| `.env.production` | `npm run build` (default mode) |
+| `.env.local` | Always — local machine overrides, never committed |
+
+Create `.env.local` at the project root for local development:
 
 ```env
 # .env.local
 VITE_API_BASE_URL=http://localhost:8080/api/v1
 ```
 
-For production builds, set `VITE_API_BASE_URL` in `.env.production` or via your CI/CD environment.
+To build for a specific mode:
+
+```bash
+npm run build -- --mode staging
+```
 
 ---
 
@@ -178,6 +193,63 @@ For production builds, set `VITE_API_BASE_URL` in `.env.production` or via your 
 | `npm run build` | Type-check + production build to `dist/` |
 | `npm run preview` | Serve the production build locally |
 | `npm run lint` | Run ESLint |
+
+---
+
+## Docker Deployment
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `Dockerfile` | Multi-stage build: Node (build) → nginx (serve) |
+| `docker-compose.yml` | Single-service compose for easy deployment |
+| `nginx.conf` | Nginx config with React Router (`try_files`) support |
+| `.env.example` | Template — copy to `.env.local` / `.env.production` etc. |
+
+### Quick deploy
+
+```bash
+# 1. Copy and fill in your environment file
+cp .env.example .env.production
+# Edit VITE_API_BASE_URL in .env.production
+
+# 2. Build and start
+docker compose --env-file .env.production up -d --build
+```
+
+App runs at `http://localhost:5173` (change `WEBUI_PORT` in the env file to use a different port).
+
+### Deploying to different environments
+
+Docker Compose reads only `.env` by default. Use `--env-file` to choose which file to load:
+
+```bash
+# Local
+docker compose --env-file .env.local up -d --build
+
+# Staging
+docker compose --env-file .env.staging up -d --build
+
+# Production
+docker compose --env-file .env.production up -d --build
+```
+
+### Useful Docker commands
+
+```bash
+# View logs
+docker compose logs -f
+
+# Stop the container
+docker compose down
+
+# Rebuild after code changes
+docker compose up -d --build
+```
+
+> **Note:** `VITE_API_BASE_URL` is baked into the JS bundle at build time by Vite.
+> Changing it requires a rebuild (`--build`).
 
 ---
 

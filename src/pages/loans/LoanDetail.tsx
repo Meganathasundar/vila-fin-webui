@@ -33,7 +33,7 @@ import { EmiCalculator } from "@/components/shared/EmiCalculator";
 import { useLookups } from "@/context/LookupContext";
 import { usePermission } from "@/hooks/usePermission";
 import { calculateEMI, calculateTotalPayable, calculateTotalInterest } from "@/utils/emi";
-import type { Loan, Person, ScheduleItem, UpdateInstallmentRequest } from "@/types/api";
+import type { Loan, Person, ScheduleItem, ScheduleSummary, UpdateInstallmentRequest } from "@/types/api";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -142,7 +142,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
         interest_split_method: data.interest_split_method,
         disbursement_date: data.disbursement_date ?? undefined,
         maturity_date: loan.maturity_date ?? undefined,
-        notes: data.notes ?? null,
+        notes: data.notes ?? undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["loans", loan.id] });
@@ -402,7 +402,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 
-function ScheduleSummaryGrid({ summary }: { summary: NonNullable<ReturnType<typeof getLoanSchedule> extends Promise<infer R> ? R["summary"] : never> }) {
+function ScheduleSummaryGrid({ summary }: { summary: ScheduleSummary }) {
   if (!summary) return null;
   return (
     <div className="rounded-lg border bg-muted/30 p-4 mb-5">

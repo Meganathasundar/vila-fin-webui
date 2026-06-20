@@ -1,11 +1,11 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { createLoan, calculateEmi } from "@/api/loans";
+import { createLoan } from "@/api/loans";
 import { createPerson, listPersons } from "@/api/persons";
 import { createVehicle, listVehicles } from "@/api/vehicles";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ import { VehicleMatchDialog } from "@/components/shared/VehicleMatchDialog";
 import { EmiCalculator, type EmiCalcSnapshot } from "@/components/shared/EmiCalculator";
 import { calculateEMI, calculateTotalPayable, calculateTotalInterest } from "@/utils/emi";
 import { formatINR } from "@/utils/currency";
-import type { Person, Vehicle, EMICalculateResponse } from "@/types/api";
+import type { Person, Vehicle } from "@/types/api";
 
 // ── Schemas ────────────────────────────────────────────────────────────────────
 
@@ -212,7 +212,7 @@ function PersonFields({
         <div className="space-y-1 col-span-2">
           <Label>Full Name *</Label>
           <Input {...f.register("full_name")} placeholder="Ravi Kumar" />
-          {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message}</p>}
+          {errors.full_name && <p className="text-xs text-destructive">{errors.full_name.message as string}</p>}
         </div>
 
         <div className="space-y-1">
@@ -222,7 +222,7 @@ function PersonFields({
             onBlur={handlePhoneBlur}
             placeholder="9876543210"
           />
-          {errors.phone && <p className="text-xs text-destructive">{errors.phone.message}</p>}
+          {errors.phone && <p className="text-xs text-destructive">{errors.phone.message as string}</p>}
         </div>
 
         <div className="space-y-1">
@@ -260,7 +260,7 @@ function PersonFields({
               ))}
             </SelectContent>
           </Select>
-          {errors.id_type && <p className="text-xs text-destructive">{errors.id_type.message}</p>}
+          {errors.id_type && <p className="text-xs text-destructive">{errors.id_type.message as string}</p>}
         </div>
 
         <div className="space-y-1">
@@ -271,7 +271,7 @@ function PersonFields({
             placeholder="XXXX XXXX XXXX"
             className="uppercase"
           />
-          {errors.id_number && <p className="text-xs text-destructive">{errors.id_number.message}</p>}
+          {errors.id_number && <p className="text-xs text-destructive">{errors.id_number.message as string}</p>}
         </div>
       </div>
 
