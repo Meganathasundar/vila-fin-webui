@@ -286,7 +286,7 @@ components:
           type: integer
         emi_amount:
           type: string
-        disbursement_date:
+        first_due_date:
           type: string
           format: date
         maturity_date:

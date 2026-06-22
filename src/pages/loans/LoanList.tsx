@@ -115,7 +115,7 @@ export default function LoanList() {
     { header: "Principal", accessorKey: "principal_amount", cell: ({ getValue }) => <CurrencyDisplay value={String(getValue())} /> },
     { header: "EMI", accessorKey: "emi_amount", cell: ({ getValue }) => <CurrencyDisplay value={String(getValue())} /> },
     { header: "Status", accessorKey: "status", cell: ({ getValue }) => <StatusBadge status={String(getValue())} /> },
-    { header: "Disbursed", accessorKey: "disbursement_date", cell: ({ getValue }) => <DateDisplay value={getValue() as string | undefined} /> },
+    { header: "First Due", accessorKey: "first_due_date", cell: ({ getValue }) => <DateDisplay value={getValue() as string | undefined} /> },
   ];
 
   return (

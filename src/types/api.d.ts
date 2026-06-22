@@ -182,7 +182,7 @@ export interface LoanUpdate {
   interest_rate: string;
   tenure_months: number;
   emi_amount: string;
-  disbursement_date?: string;
+  first_due_date?: string;
   maturity_date?: string;
   status: "draft" | "active" | "closed" | "defaulted" | "cancelled";
   guarantor_id?: string | null;

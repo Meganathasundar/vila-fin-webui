@@ -375,9 +375,9 @@ export default function VehicleDetail() {
                   <div><StatusBadge status={loan.status} /></div>
                   <div className="font-medium"><CurrencyDisplay value={loan.principal_amount} /></div>
                   <div className="text-muted-foreground">
-                    {loan.disbursement_date
-                      ? <DateDisplay value={loan.disbursement_date} />
-                      : <span className="italic">Not disbursed</span>}
+                    {loan.first_due_date
+                      ? <DateDisplay value={loan.first_due_date} />
+                      : <span className="italic">No due date</span>}
                   </div>
                   <Link to={`/loans/${loan.id}`}>
                     <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground">

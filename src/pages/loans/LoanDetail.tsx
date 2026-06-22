@@ -82,7 +82,7 @@ const editLoanSchema = z.object({
   tenure_months: z.coerce.number().int().positive("Must be positive"),
   emi_amount: z.coerce.number().positive("Must be positive"),
   interest_split_method: z.enum(["equal", "rule_of_78", "reducing_balance"]),
-  disbursement_date: z.string().nullable().optional(),
+  first_due_date: z.string().nullable().optional(),
   notes: z.string().nullable().optional(),
 });
 type EditLoanForm = z.infer<typeof editLoanSchema>;
@@ -122,7 +122,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
       tenure_months: loan.tenure_months ?? 12,
       emi_amount: parseFloat(loan.emi_amount ?? "0"),
       interest_split_method: loan.interest_split_method ?? "rule_of_78",
-      disbursement_date: loan.disbursement_date ?? null,
+      first_due_date: loan.first_due_date ?? null,
       notes: loan.notes ?? null,
     },
   });
@@ -140,7 +140,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
         tenure_months: data.tenure_months,
         emi_amount: String(Number(data.emi_amount).toFixed(2)),
         interest_split_method: data.interest_split_method,
-        disbursement_date: data.disbursement_date ?? undefined,
+        first_due_date: data.first_due_date ?? undefined,
         maturity_date: loan.maturity_date ?? undefined,
         notes: data.notes ?? undefined,
       }),
@@ -372,12 +372,12 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
 
         <div className="space-y-1 col-span-2">
           <Label>
-            Due Date
+            First Due Date
             {isActive && <LockedBadge />}
           </Label>
           <Input
             type="date"
-            {...register("disbursement_date")}
+            {...register("first_due_date")}
             disabled={isActive}
             className={isActive ? "bg-muted text-muted-foreground cursor-not-allowed" : ""}
           />
@@ -456,9 +456,9 @@ export default function LoanDetail() {
   const canEdit = usePermission("edit_vehicle"); // admin + manager
 
 
-  // ── Activate dialog state (collects disbursement_date before PUT) ───────────
+  // ── Activate dialog state (collects first_due_date before PUT) ──────────────
   const [activateOpen, setActivateOpen] = useState(false);
-  const [disbursementDate, setDisbursementDate] = useState(new Date().toISOString().split("T")[0]);
+  const [firstDueDate, setFirstDueDate] = useState(new Date().toISOString().split("T")[0]);
 
   // ── Pay installment dialog state ────────────────────────────────────────────
   const [payItem, setPayItem] = useState<ScheduleItem | null>(null);
@@ -508,11 +508,11 @@ export default function LoanDetail() {
       if (action === "activate") {
         // Match the same spread pattern used by close/cancel/default — the backend
         // ignores unknown fields (Go's json.Unmarshal default). We add
-        // disbursement_date (required for activation) and override status.
+        // first_due_date (required for activation) and override status.
         return updateLoan(id, {
           ...loan,
           status: "active",
-          disbursement_date: disbursementDate,
+          first_due_date: firstDueDate,
         } as Parameters<typeof updateLoan>[1]);
       }
       if (action === "close") return closeLoan(id, loan);
@@ -645,7 +645,7 @@ export default function LoanDetail() {
             <div><dt className="text-muted-foreground">EMI</dt><dd className="font-semibold"><CurrencyDisplay value={emi} /></dd></div>
             <div><dt className="text-muted-foreground">Total Payable</dt><dd><CurrencyDisplay value={totalPayable} /></dd></div>
             <div><dt className="text-muted-foreground">Total Interest</dt><dd><CurrencyDisplay value={totalInterest} /></dd></div>
-            <div><dt className="text-muted-foreground">Disbursement Date</dt><dd><DateDisplay value={loan.disbursement_date} /></dd></div>
+            <div><dt className="text-muted-foreground">First Due Date</dt><dd><DateDisplay value={loan.first_due_date} /></dd></div>
             <div><dt className="text-muted-foreground">Maturity Date</dt><dd><DateDisplay value={loan.maturity_date} /></dd></div>
             {loan.loan_date && <div><dt className="text-muted-foreground">Loan Date</dt><dd><DateDisplay value={loan.loan_date} /></dd></div>}
             {loan.commission && <div><dt className="text-muted-foreground">Commission</dt><dd><CurrencyDisplay value={loan.commission} /></dd></div>}
@@ -839,7 +839,7 @@ export default function LoanDetail() {
         </CardContent>
       </Card>
 
-      {/* ── Activate loan dialog (collects disbursement date) ──────────────── */}
+      {/* ── Activate loan dialog (collects first due date) ─────────────────── */}
       <Dialog open={activateOpen} onOpenChange={(o) => !o && setActivateOpen(false)}>
         <DialogContent>
           <DialogHeader>
@@ -851,20 +851,20 @@ export default function LoanDetail() {
               This cannot be undone.
             </p>
             <div className="space-y-1">
-              <Label>Disbursement Date *</Label>
+              <Label>First Due Date *</Label>
               <Input
                 type="date"
-                value={disbursementDate}
-                onChange={(e) => setDisbursementDate(e.target.value)}
+                value={firstDueDate}
+                onChange={(e) => setFirstDueDate(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">Date the loan amount was disbursed to the borrower.</p>
+              <p className="text-xs text-muted-foreground">Due date of the first installment; anchors all installment due dates.</p>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActivateOpen(false)}>Cancel</Button>
             <Button
               onClick={() => loanMutation.mutate("activate")}
-              disabled={!disbursementDate || loanMutation.isPending}
+              disabled={!firstDueDate || loanMutation.isPending}
             >
               {loanMutation.isPending ? "Activating…" : "Activate Loan"}
             </Button>
