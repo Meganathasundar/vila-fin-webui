@@ -372,7 +372,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
 
         <div className="space-y-1 col-span-2">
           <Label>
-            Disbursement Date
+            Due Date
             {isActive && <LockedBadge />}
           </Label>
           <Input
@@ -647,6 +647,9 @@ export default function LoanDetail() {
             <div><dt className="text-muted-foreground">Total Interest</dt><dd><CurrencyDisplay value={totalInterest} /></dd></div>
             <div><dt className="text-muted-foreground">Disbursement Date</dt><dd><DateDisplay value={loan.disbursement_date} /></dd></div>
             <div><dt className="text-muted-foreground">Maturity Date</dt><dd><DateDisplay value={loan.maturity_date} /></dd></div>
+            {loan.loan_date && <div><dt className="text-muted-foreground">Loan Date</dt><dd><DateDisplay value={loan.loan_date} /></dd></div>}
+            {loan.commission && <div><dt className="text-muted-foreground">Commission</dt><dd><CurrencyDisplay value={loan.commission} /></dd></div>}
+            {loan.document_charge && <div><dt className="text-muted-foreground">Document Charge</dt><dd><CurrencyDisplay value={loan.document_charge} /></dd></div>}
             {loan.notes && <div className="col-span-2"><dt className="text-muted-foreground">Notes</dt><dd>{loan.notes}</dd></div>}
           </dl>
         </CardContent>

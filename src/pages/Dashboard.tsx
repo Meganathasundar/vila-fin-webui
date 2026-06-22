@@ -122,7 +122,7 @@ export default function Dashboard() {
                       <th className="px-4 py-2 text-left font-medium text-muted-foreground">Loan No</th>
                       <th className="px-4 py-2 text-left font-medium text-muted-foreground">Principal</th>
                       <th className="px-4 py-2 text-left font-medium text-muted-foreground">Status</th>
-                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Created</th>
+                      <th className="px-4 py-2 text-left font-medium text-muted-foreground">Loan Date</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -140,7 +140,9 @@ export default function Dashboard() {
                           <StatusBadge status={loan.status} />
                         </td>
                         <td className="px-4 py-2">
-                          <DateDisplay value={loan.created_at} />
+                          {loan.loan_date
+                            ? <DateDisplay value={loan.loan_date} />
+                            : <span className="text-muted-foreground">—</span>}
                         </td>
                       </tr>
                     ))}

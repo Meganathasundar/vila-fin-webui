@@ -45,7 +45,7 @@ const vehicleSchema = z.object({
   registration_no: z.string().min(1, "Required"),
   make: z.string().min(1, "Required"),
   model: z.string().min(1, "Required"),
-  year: z.coerce.number().int().min(1980, "Year must be 1980 or later").max(2100),
+  year: z.string().min(1, "Required").regex(/^\d{4}$/, "Must be a 4-digit year"),
   color: z.string().optional(),
   fuel_type: z.enum(["petrol", "diesel", "electric", "hybrid", "cng", "other"]).optional(),
   vehicle_type: z.enum(["two_wheeler", "four_wheeler", "commercial"]).optional(),
@@ -59,6 +59,9 @@ const loanSchema = z.object({
   principal_amount: z.coerce.number().positive("Must be positive"),
   interest_rate: z.coerce.number().positive("Must be positive"),
   tenure_months: z.coerce.number().int().positive("Must be positive"),
+  commission: z.string().optional(),
+  document_charge: z.string().optional(),
+  loan_date: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -443,6 +446,9 @@ export default function LoanForm() {
         interest_rate: String(loan.interest_rate),
         tenure_months: loan.tenure_months,
         emi_amount: calcEmiAmount ?? String(reviewEmi),
+        commission: loan.commission?.trim() || null,
+        document_charge: loan.document_charge?.trim() || null,
+        loan_date: loan.loan_date?.trim() || null,
         notes: loan.notes,
       });
     },
@@ -634,6 +640,28 @@ export default function LoanForm() {
                 </div>
 
                 <div className="space-y-1">
+                  <Label>Commission (₹)</Label>
+                  <Input {...loanForm.register("commission")} placeholder="e.g. 5000.00" />
+                  {loanForm.formState.errors.commission && (
+                    <p className="text-xs text-destructive">{loanForm.formState.errors.commission.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Document Charge (₹)</Label>
+                  <Input {...loanForm.register("document_charge")} placeholder="e.g. 1500.00" />
+                  {loanForm.formState.errors.document_charge && (
+                    <p className="text-xs text-destructive">{loanForm.formState.errors.document_charge.message}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <Label>Loan Date</Label>
+                  <Input type="date" {...loanForm.register("loan_date")} />
+                  <p className="text-xs text-muted-foreground">Date the loan agreement was signed or issued</p>
+                </div>
+
+                <div className="space-y-1">
                   <Label>Notes</Label>
                   <Textarea {...loanForm.register("notes")} rows={2} />
                 </div>
@@ -784,7 +812,7 @@ export default function LoanForm() {
 
                 <div className="space-y-1">
                   <Label>Year *</Label>
-                  <Input type="number" {...vehicleForm.register("year")} placeholder="2022" />
+                  <Input {...vehicleForm.register("year")} placeholder="e.g. 2022" />
                   {vehicleForm.formState.errors.year && (
                     <p className="text-xs text-destructive">{vehicleForm.formState.errors.year.message}</p>
                   )}
@@ -940,6 +968,9 @@ export default function LoanForm() {
                 <div><dt className="text-muted-foreground">EMI</dt><dd className="font-semibold"><CurrencyDisplay value={calcEmiAmount ?? reviewEmi} /></dd></div>
                 <div><dt className="text-muted-foreground">Total Payable</dt><dd><CurrencyDisplay value={reviewTotal} /></dd></div>
                 <div><dt className="text-muted-foreground">Total Interest</dt><dd><CurrencyDisplay value={reviewInterest} /></dd></div>
+                {s2.commission && <div><dt className="text-muted-foreground">Commission</dt><dd><CurrencyDisplay value={s2.commission} /></dd></div>}
+                {s2.document_charge && <div><dt className="text-muted-foreground">Document Charge</dt><dd><CurrencyDisplay value={s2.document_charge} /></dd></div>}
+                {s2.loan_date && <div><dt className="text-muted-foreground">Loan Date</dt><dd>{s2.loan_date}</dd></div>}
                 {s2.notes && <div className="col-span-2"><dt className="text-muted-foreground">Notes</dt><dd>{s2.notes}</dd></div>}
               </dl>
             </div>

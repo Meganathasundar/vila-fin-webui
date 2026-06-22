@@ -17,7 +17,7 @@ const vehicleSchema = z.object({
   registration_no: z.string().min(1, "Required"),
   make: z.string().min(1, "Required"),
   model: z.string().min(1, "Required"),
-  year: z.coerce.number().int().min(1980, "Year must be 1980 or later").max(2100),
+  year: z.string().min(1, "Required").regex(/^\d{4}$/, "Must be a 4-digit year"),
   color: z.string().optional(),
   fuel_type: z.enum(["petrol", "diesel", "electric", "hybrid", "cng", "other"]).optional(),
   vehicle_type: z.enum(["two_wheeler", "four_wheeler", "commercial"]).optional(),
@@ -161,7 +161,7 @@ export function VehicleForm({ vehicle, onSuccess, onCancel }: VehicleFormProps) 
         </div>
         <div className="space-y-1">
           <Label>Year *</Label>
-          <Input {...register("year")} type="number" />
+          <Input {...register("year")} placeholder="e.g. 2022" />
           {errors.year && <p className="text-xs text-destructive">{errors.year.message}</p>}
         </div>
         <div className="space-y-1">

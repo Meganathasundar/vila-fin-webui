@@ -83,7 +83,7 @@ export interface VehicleCreate {
   registration_no: string;
   make: string;
   model: string;
-  year: number;
+  year: string;
   color?: string | null;
   fuel_type?: "petrol" | "diesel" | "electric" | "hybrid" | "cng" | "other" | null;
   vehicle_type?: "two_wheeler" | "four_wheeler" | "commercial" | null;
@@ -168,6 +168,9 @@ export interface LoanCreate {
   tenure_months: number;
   emi_amount: string;
   interest_split_method?: InterestSplitMethod;
+  commission?: string | null;
+  document_charge?: string | null;
+  loan_date?: string | null;
   notes?: string;
 }
 
@@ -184,6 +187,9 @@ export interface LoanUpdate {
   status: "draft" | "active" | "closed" | "defaulted" | "cancelled";
   guarantor_id?: string | null;
   interest_split_method?: InterestSplitMethod;
+  commission?: string | null;
+  document_charge?: string | null;
+  loan_date?: string | null;
   notes?: string;
 }
 
